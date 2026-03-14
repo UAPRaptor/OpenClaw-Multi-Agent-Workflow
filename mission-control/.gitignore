@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Runtime state files (generated when app runs)
+mission-control-state.json
+mission-control-alerts.log
+
+# Mac
+.DS_Store

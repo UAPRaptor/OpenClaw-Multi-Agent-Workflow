@@ -1,0 +1,319 @@
+/* ── OpenClaw Mission Control — Shared Styles ── */
+
+:root {
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --border:    #30363d;
+  --text:      #e6edf3;
+  --text-muted:#8b949e;
+  --accent:    #58a6ff;
+  --green:     #3fb950;
+  --yellow:    #d29922;
+  --red:       #f85149;
+  --purple:    #bc8cff;
+  --radius:    8px;
+  --font:      -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono:      "Cascadia Code", "Fira Code", "Courier New", monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Layout ── */
+.app-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-header .logo {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.5px;
+}
+
+.app-header nav a {
+  margin-left: 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.app-header nav a:hover,
+.app-header nav a.active { color: var(--text); text-decoration: none; }
+
+.main-content {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.card-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+/* ── Status dots ── */
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.dot-active  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dot-idle    { background: var(--text-muted); }
+.dot-stalled { background: var(--yellow); }
+.dot-unknown { background: var(--red); }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s;
+}
+.btn:hover { opacity: 0.85; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-primary  { background: var(--accent); color: #fff; }
+.btn-success  { background: var(--green); color: #fff; }
+.btn-danger   { background: var(--red); color: #fff; }
+.btn-ghost    { background: transparent; border: 1px solid var(--border); color: var(--text); }
+
+/* ── Progress bar ── */
+.progress-bar {
+  background: var(--border);
+  border-radius: 4px;
+  height: 8px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+/* ── Badges ── */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-blue   { background: rgba(88,166,255,0.15); color: var(--accent); }
+.badge-green  { background: rgba(63,185,80,0.15);  color: var(--green); }
+.badge-yellow { background: rgba(210,153,34,0.15); color: var(--yellow); }
+.badge-red    { background: rgba(248,81,73,0.15);  color: var(--red); }
+.badge-gray   { background: rgba(139,148,158,0.15);color: var(--text-muted); }
+
+/* ── Alerts ── */
+.alert-strip {
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+}
+.alert-security { background: rgba(248,81,73,0.12);  border: 1px solid rgba(248,81,73,0.3); }
+.alert-warning  { background: rgba(210,153,34,0.12); border: 1px solid rgba(210,153,34,0.3); }
+.alert-info     { background: rgba(88,166,255,0.10); border: 1px solid rgba(88,166,255,0.2); }
+.alert-dismiss  { margin-left: auto; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; line-height: 1; }
+
+/* ── Inputs ── */
+input[type="text"], input[type="number"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  padding: 8px 12px;
+  width: 100%;
+  outline: none;
+}
+input[type="text"]:focus, input[type="number"]:focus {
+  border-color: var(--accent);
+}
+
+/* ── Check list ── */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.check-row:last-child { border-bottom: none; }
+.check-icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+.check-name { font-weight: 500; flex: 1; }
+.check-detail { color: var(--text-muted); font-size: 12px; }
+.check-fix { color: var(--yellow); font-size: 12px; margin-top: 2px; }
+
+/* ── Theme cards ── */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.theme-card {
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.theme-card:hover { border-color: var(--accent); }
+.theme-card.selected { border-color: var(--accent); background: rgba(88,166,255,0.08); }
+.theme-card .theme-label { font-weight: 600; margin-bottom: 4px; }
+.theme-card .theme-desc  { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+
+/* ── Team size buttons ── */
+.team-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 8px;
+}
+.team-option {
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+.team-option:hover { border-color: var(--accent); }
+.team-option.selected { border-color: var(--accent); background: rgba(88,166,255,0.08); }
+.team-option .team-size { font-size: 24px; font-weight: 700; color: var(--accent); }
+.team-option .team-label { font-weight: 600; margin: 4px 0; }
+.team-option .team-desc  { font-size: 12px; color: var(--text-muted); }
+
+/* ── Step indicators ── */
+.steps {
+  display: flex;
+  gap: 0;
+  margin-bottom: 28px;
+}
+.step {
+  flex: 1;
+  text-align: center;
+  position: relative;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.step::before {
+  content: '';
+  display: block;
+  height: 3px;
+  background: var(--border);
+  margin-bottom: 8px;
+}
+.step.done::before   { background: var(--green); }
+.step.active::before { background: var(--accent); }
+.step.active { color: var(--text); font-weight: 600; }
+
+/* ── File preview list ── */
+.file-list {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.8;
+}
+
+/* ── Activity feed ── */
+.activity-item {
+  display: flex;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.activity-item:last-child { border-bottom: none; }
+.activity-time { color: var(--text-muted); font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+.activity-msg { flex: 1; }
+
+/* ── Kanban columns ── */
+.kanban {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+@media (max-width: 900px) { .kanban { grid-template-columns: repeat(2, 1fr); } }
+.kanban-col {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+}
+.kanban-col-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.kanban-count {
+  background: var(--border);
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 11px;
+  color: var(--text);
+}
+.kanban-count.has-items { background: var(--accent); color: #fff; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }

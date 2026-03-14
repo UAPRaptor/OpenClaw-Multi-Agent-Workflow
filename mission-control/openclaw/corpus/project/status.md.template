@@ -1,0 +1,53 @@
+# Status — {{ project_name }}
+
+**Last Updated:** [Date]
+**Active Milestone:** Milestone 1
+**Overall Progress:** 0 / 6 milestones complete
+
+---
+
+## Current State
+
+| Milestone | Status | Build | Notes |
+|-----------|--------|-------|-------|
+| 1 — Skeleton | READY | — | Waiting for Builder |
+| 2 — Data Layer | PENDING | — | |
+| 3 — Primary Feature | PENDING | — | |
+| 4 — Secondary Features | PENDING | — | |
+| 5 — Stabilization | PENDING | — | |
+| 6 — Release | PENDING | — | |
+
+---
+
+## Ticket Summary
+
+| State | Count |
+|-------|-------|
+| proposed | 0 |
+| ready | 0 |
+| in-progress | 0 |
+| blocked | 0 |
+| qa-failed | 0 |
+| fixed | 0 |
+| passed | 0 |
+| released | 0 |
+
+---
+
+## Latest Build
+
+None yet.
+
+---
+
+## Overnight Mode
+
+Enabled: NO
+Last night run: —
+Milestones completed overnight: 0
+
+---
+
+## Blockers
+
+None.

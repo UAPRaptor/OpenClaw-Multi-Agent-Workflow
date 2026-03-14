@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw Mission Control</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    /* Monitor-specific layout */
+    .dashboard {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .dashboard-full { grid-column: 1 / -1; }
+
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    .agent-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+    .agent-card-role { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .agent-card-char { font-weight: 600; margin: 4px 0 8px; font-size: 14px; }
+    .agent-card-status { font-size: 12px; display: flex; align-items: center; }
+    .agent-card-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    .project-banner {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .project-name { font-size: 18px; font-weight: 700; }
+    .project-milestone { font-size: 13px; color: var(--text-muted); }
+    .project-progress { flex: 1; min-width: 120px; }
+
+    .overnight-row { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+    .overnight-indicator { display: flex; align-items: center; gap: 8px; }
+    .overnight-on  { color: var(--accent); font-weight: 600; }
+    .overnight-off { color: var(--text-muted); }
+
+    .no-workspace {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+    .no-workspace h2 { font-size: 20px; color: var(--text); margin-bottom: 10px; }
+    .no-workspace p  { margin-bottom: 20px; }
+
+    .conn-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      display: inline-block; margin-right: 6px;
+    }
+    .conn-live { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .conn-off  { background: var(--red); }
+    .conn-status { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; }
+
+    #morning-report-modal {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      overflow-y: auto;
+      padding: 40px 20px;
+    }
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .modal-title  { font-size: 16px; font-weight: 700; }
+    .modal-body   { font-size: 13px; line-height: 1.8; white-space: pre-wrap; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span class="logo">OpenClaw Mission Control</span>
+      <span id="versionBadge" style="font-size:11px;color:var(--text-muted);background:var(--border);padding:2px 7px;border-radius:10px;"></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <div class="conn-status" id="connStatus">
+        <span class="conn-dot conn-off" id="connDot"></span>
+        <span id="connLabel">Connecting...</span>
+      </div>
+      <nav>
+        <a href="/monitor" class="active">Dashboard</a>
+        <a href="/install">Install</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="main-content">
+    <!-- No workspace state -->
+    <div id="noWorkspace" class="no-workspace" style="display:none">
+      <h2>No workspace configured</h2>
+      <p>Install an OpenClaw workspace to begin monitoring your agents.</p>
+      <a href="/install" class="btn btn-primary">Install Workspace</a>
+    </div>
+
+    <!-- Main dashboard (shown when workspace exists) -->
+    <div id="dashboardContent" style="display:none">
+
+      <!-- ── Security Alerts ── -->
+      <div id="alertsPanel"></div>
+
+      <!-- ── Agent Status Bar ── -->
+      <div class="card dashboard-full">
+        <div class="card-title">Agent Status</div>
+        <div class="agent-grid" id="agentGrid">
+          <p style="color:var(--text-muted);font-size:13px">Loading agents...</p>
+        </div>
+      </div>
+
+      <div class="dashboard">
+        <!-- ── Active Project ── -->
+        <div class="card">
+          <div class="card-title">Active Project</div>
+          <div class="project-banner" id="projectBanner">
+            <p style="color:var(--text-muted);font-size:13px">No project active</p>
+          </div>
+        </div>
+
+        <!-- ── Overnight Mode ── -->
+        <div class="card">
+          <div class="card-title">Overnight Mode</div>
+          <div id="overnightPanel" class="overnight-row">
+            <div class="overnight-indicator overnight-off">Night mode: OFF</div>
+          </div>
+        </div>
+
+        <!-- ── Ticket Board ── -->
+        <div class="card">
+          <div class="card-title">Ticket Board</div>
+          <div class="kanban" id="kanbanBoard"></div>
+        </div>
+
+        <!-- ── Activity Feed ── -->
+        <div class="card">
+          <div class="card-title">Recent Activity</div>
+          <div id="activityFeed">
+            <p style="color:var(--text-muted);font-size:13px">Watching for changes...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Morning report modal -->
+  <div id="morning-report-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">Morning Report</span>
+        <button class="btn btn-ghost" onclick="closeReport()" style="padding:4px 10px">Close</button>
+      </div>
+      <div class="modal-body" id="reportContent">Loading...</div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

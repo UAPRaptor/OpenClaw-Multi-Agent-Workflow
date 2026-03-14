@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw Mission Control — Install</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    .wizard { max-width: 680px; margin: 40px auto; padding: 0 24px; }
+    .wizard-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; }
+    .wizard-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .wizard-sub   { color: var(--text-muted); margin-bottom: 24px; font-size: 14px; }
+    .field-label  { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; margin-top: 16px; display: block; }
+    .wizard-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+    .section-hidden { display: none; }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .success-icon { font-size: 48px; text-align: center; margin-bottom: 16px; }
+    .error-box { background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3); border-radius: var(--radius); padding: 12px 14px; color: var(--red); font-size: 13px; margin-top: 12px; }
+    #installProgress { display: none; margin-top: 16px; }
+    .workspace-choice { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+    .workspace-card { border: 2px solid var(--border); border-radius: var(--radius); padding: 18px 20px; cursor: pointer; transition: border-color 0.15s; text-align: left; background: var(--bg); width: 100%; }
+    .workspace-card:hover { border-color: var(--accent); }
+    .workspace-card-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .workspace-card-path { font-size: 12px; color: var(--accent); font-family: monospace; margin-bottom: 4px; }
+    .workspace-card-desc { font-size: 12px; color: var(--text-muted); }
+    .hw-badge { display: flex; gap: 20px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; margin-bottom: 20px; flex-wrap: wrap; }
+    .hw-stat { display: flex; flex-direction: column; gap: 2px; }
+    .hw-stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+    .hw-stat-value { font-weight: 600; }
+    .tier-options { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+    .tier-card { border: 2px solid var(--border); border-radius: var(--radius); padding: 14px 18px; cursor: pointer; transition: border-color 0.15s; text-align: left; background: var(--bg); width: 100%; position: relative; }
+    .tier-card:hover { border-color: var(--accent); }
+    .tier-card.selected { border-color: var(--accent); background: rgba(88,166,255,0.06); }
+    .tier-card.recommended::after { content: "Recommended"; position: absolute; top: 10px; right: 12px; font-size: 10px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+    .tier-title { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+    .tier-agents { font-size: 12px; color: var(--text-muted); }
+    /* Provider grid */
+    .provider-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px; }
+    .provider-card { border: 2px solid var(--border); border-radius: var(--radius); padding: 14px 16px; cursor: pointer; transition: border-color 0.15s; text-align: left; background: var(--bg); width: 100%; }
+    .provider-card:hover { border-color: var(--accent); }
+    .provider-card.active { border-color: var(--accent); background: rgba(88,166,255,0.06); }
+    .provider-title { font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+    .provider-desc { font-size: 11px; color: var(--text-muted); }
+    .model-item { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: var(--bg); border-radius: 6px; font-size: 13px; margin-bottom: 4px; }
+    .model-item-id { font-family: monospace; flex: 1; }
+    .model-item-provider { font-size: 11px; color: var(--text-muted); }
+    .inline-form { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-top: 12px; }
+    .inline-form-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+    .model-assign-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .model-assign-row:last-of-type { border-bottom: none; }
+    .model-assign-label { width: 160px; font-size: 13px; font-weight: 600; flex-shrink: 0; }
+    .model-assign-label span { display: block; font-size: 11px; color: var(--text-muted); font-weight: 400; margin-top: 2px; }
+    .model-assign-row input { flex: 1; }
+    .ollama-progress { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-top: 10px; font-size: 11px; font-family: monospace; max-height: 120px; overflow-y: auto; color: var(--text-muted); white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span class="logo">OpenClaw Mission Control</span>
+      <span id="versionBadge" style="font-size:11px;color:var(--text-muted);background:var(--border);padding:2px 7px;border-radius:10px;"></span>
+    </div>
+    <nav>
+      <a href="/monitor">Dashboard</a>
+      <a href="/install" class="active">Install</a>
+    </nav>
+  </header>
+
+  <div class="wizard">
+    <!-- Step indicators -->
+    <div class="steps" id="stepIndicators">
+      <div class="step active" id="si-1">1. Check</div>
+      <div class="step" id="si-2">2. Models</div>
+      <div class="step" id="si-3">3. Location</div>
+      <div class="step" id="si-4">4. Team</div>
+      <div class="step" id="si-5">5. Theme</div>
+      <div class="step" id="si-6">6. Install</div>
+    </div>
+
+    <div class="wizard-card">
+
+      <!-- ── Step 0: Existing Workspace Found ── -->
+      <div id="step0" class="section-hidden">
+        <div class="wizard-title">Existing Workspace Found</div>
+        <div class="wizard-sub">An OpenClaw workspace already exists on this machine. Would you like to update it or start fresh?</div>
+        <div class="workspace-choice" id="workspaceChoices"></div>
+        <div class="workspace-choice">
+          <button class="workspace-card" onclick="selectNewMode()">
+            <div class="workspace-card-title">New Install</div>
+            <div class="workspace-card-desc">Choose a new location and create a fresh workspace from scratch.</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- ── Step 1: Prerequisites ── -->
+      <div id="step1">
+        <div class="wizard-title">Prerequisites Check</div>
+        <div class="wizard-sub">Verifying your machine is ready for an OpenClaw workspace.</div>
+        <div id="prereqList"><p style="color:var(--text-muted)">Checking...</p></div>
+        <div class="wizard-actions">
+          <button class="btn btn-primary" id="btn1Next" disabled onclick="goStep(2)">Continue</button>
+        </div>
+      </div>
+
+      <!-- ── Step 2: Model Setup ── -->
+      <div id="step2" class="section-hidden">
+        <div class="wizard-title">Model Setup</div>
+        <div class="wizard-sub">Configure which AI providers OpenClaw can use. If you already ran <code>openclaw configure</code>, your models appear below.</div>
+
+        <label class="field-label">Configured Providers</label>
+        <div id="configuredModels"><p style="color:var(--text-muted);font-size:13px">Detecting...</p></div>
+
+        <label class="field-label" style="margin-top:20px">Add a Provider</label>
+        <div class="provider-grid">
+          <button class="provider-card" id="pc-anthropic" onclick="showOAuthFlow('anthropic')">
+            <div class="provider-title">Anthropic</div>
+            <div class="provider-desc">Claude subscription (OAuth)</div>
+          </button>
+          <button class="provider-card" id="pc-openai-oauth" onclick="showOAuthFlow('openai')">
+            <div class="provider-title">OpenAI OAuth</div>
+            <div class="provider-desc">Sign in with OpenAI account</div>
+          </button>
+          <button class="provider-card" id="pc-openai-key" onclick="showApiKeyForm('openai-key')">
+            <div class="provider-title">OpenAI API Key</div>
+            <div class="provider-desc">Enter your API key directly</div>
+          </button>
+          <button class="provider-card" id="pc-openrouter" onclick="showApiKeyForm('openrouter-key')">
+            <div class="provider-title">OpenRouter</div>
+            <div class="provider-desc">API key — access many models</div>
+          </button>
+          <button class="provider-card" id="pc-github" onclick="showOAuthFlow('github')">
+            <div class="provider-title">GitHub Copilot</div>
+            <div class="provider-desc">GitHub OAuth</div>
+          </button>
+          <button class="provider-card" id="pc-ollama" onclick="showOllamaSetup()">
+            <div class="provider-title">Ollama Local</div>
+            <div class="provider-desc">Run qwen2.5:7b-instruct locally</div>
+          </button>
+        </div>
+
+        <!-- Inline form area -->
+        <div id="providerForm" class="section-hidden"></div>
+
+        <div class="wizard-actions" style="margin-top:20px">
+          <button class="btn btn-ghost" onclick="goStep(1)">Back</button>
+          <button class="btn btn-ghost" onclick="goStep(3)" style="margin-right:auto;color:var(--text-muted)">Skip — configure OpenClaw separately</button>
+          <button class="btn btn-primary" onclick="goStep(3)">Continue</button>
+        </div>
+      </div>
+
+      <!-- ── Step 3: Target Directory ── -->
+      <div id="step3" class="section-hidden">
+        <div class="wizard-title">Choose Workspace Location</div>
+        <div class="wizard-sub">This is where all agent files, projects, and builds will be stored.</div>
+        <label class="field-label" for="targetDir">Workspace folder path</label>
+        <input type="text" id="targetDir" placeholder="e.g. /Users/you/openclaw-workspace" />
+        <p style="font-size:12px;color:var(--text-muted);margin-top:6px;">
+          The folder will be created if it does not exist. Avoid paths inside cloud-synced folders (Dropbox, OneDrive) as agents write files frequently.
+        </p>
+        <div class="wizard-actions">
+          <button class="btn btn-ghost" onclick="goStep(2)">Back</button>
+          <button class="btn btn-primary" onclick="goStep(4)">Continue</button>
+        </div>
+      </div>
+
+      <!-- ── Step 4: Team & Performance ── -->
+      <div id="step4" class="section-hidden">
+        <div class="wizard-title">Team & Performance</div>
+        <div class="wizard-sub">Select team size and assign models to each agent group.</div>
+        <div class="hw-badge" id="hwBadge">
+          <div class="hw-stat"><span class="hw-stat-label">RAM</span><span class="hw-stat-value" id="hwRam">Detecting…</span></div>
+          <div class="hw-stat"><span class="hw-stat-label">CPU Cores</span><span class="hw-stat-value" id="hwCpu">—</span></div>
+          <div class="hw-stat"><span class="hw-stat-label">GPU / VRAM</span><span class="hw-stat-value" id="hwGpu">—</span></div>
+        </div>
+        <div class="tier-options" id="tierOptions">
+          <button class="tier-card" id="tier-lite" onclick="selectTier('lite')">
+            <div class="tier-title">Lite</div>
+            <div class="tier-agents">4 agents — lower resource use</div>
+          </button>
+          <button class="tier-card" id="tier-standard" onclick="selectTier('standard')">
+            <div class="tier-title">Standard</div>
+            <div class="tier-agents">4 agents — balanced workload</div>
+          </button>
+          <button class="tier-card" id="tier-power" onclick="selectTier('power')">
+            <div class="tier-title">Power</div>
+            <div class="tier-agents">8 agents — full team</div>
+          </button>
+        </div>
+
+        <label class="field-label" style="margin-top:24px">Model Assignment</label>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+          Assign a model to each role group. Type any model ID or select from the list.
+        </p>
+        <div id="modelAssignGrid">
+          <div class="model-assign-row">
+            <div class="model-assign-label">Strategic <span>PM · Architect · Security</span></div>
+            <input list="modelOptions" id="modelStrategic" placeholder="e.g. claude-sonnet-4-6" oninput="state.models.strategic = this.value" />
+          </div>
+          <div class="model-assign-row">
+            <div class="model-assign-label">Implementation <span>Builder · QA</span></div>
+            <input list="modelOptions" id="modelImplementation" placeholder="e.g. claude-sonnet-4-6" oninput="state.models.implementation = this.value" />
+          </div>
+          <div class="model-assign-row">
+            <div class="model-assign-label">Support <span>DevOps · UX · Research</span></div>
+            <input list="modelOptions" id="modelSupport" placeholder="e.g. claude-sonnet-4-6" oninput="state.models.support = this.value" />
+          </div>
+        </div>
+        <datalist id="modelOptions"></datalist>
+
+        <div class="wizard-actions">
+          <button class="btn btn-ghost" onclick="state.updateMode ? goStep(2) : goStep(3)">Back</button>
+          <button class="btn btn-primary" onclick="goStep(5)">Continue</button>
+        </div>
+      </div>
+
+      <!-- ── Step 5: Character Theme ── -->
+      <div id="step5" class="section-hidden">
+        <div class="wizard-title">Choose Character Theme</div>
+        <div class="wizard-sub">Each agent adopts a decision style inspired by their character. This affects tone and problem-solving approach — not what gets built.</div>
+        <div class="theme-grid" id="themeGrid">
+          <p style="color:var(--text-muted)">Loading themes...</p>
+        </div>
+        <div id="agentPreview" class="agent-roster" style="display:none;margin-top:16px;"></div>
+        <div class="wizard-actions">
+          <button class="btn btn-ghost" onclick="goStep(4)">Back</button>
+          <button class="btn btn-primary" onclick="goStep(6)">Continue</button>
+        </div>
+      </div>
+
+      <!-- ── Step 6: Review & Install ── -->
+      <div id="step6" class="section-hidden">
+        <div class="wizard-title">Ready to Install</div>
+        <div class="wizard-sub">Review the configuration below, then click Install.</div>
+        <div id="reviewSummary" style="margin-bottom:16px;font-size:13px;"></div>
+        <label class="field-label">Files that will be created</label>
+        <div class="file-list" id="filePreview">Loading preview...</div>
+        <div id="installProgress">
+          <div class="progress-bar" style="margin-top:16px;"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+          <p style="color:var(--text-muted);font-size:12px;margin-top:6px;" id="progressLabel">Installing...</p>
+        </div>
+        <div id="activeAgentWarning" class="section-hidden" style="background:rgba(210,153,34,0.1);border:1px solid rgba(210,153,34,0.4);border-radius:var(--radius);padding:12px 14px;font-size:13px;margin-top:12px;color:var(--yellow)"></div>
+        <div id="installError" class="section-hidden"></div>
+        <div id="installSuccess" class="section-hidden">
+          <div class="success-icon">✅</div>
+          <p style="text-align:center;font-weight:600;">Workspace installed successfully!</p>
+          <p style="text-align:center;color:var(--text-muted);font-size:13px;margin-top:6px;" id="successPath"></p>
+        </div>
+        <div class="wizard-actions" id="step6Actions">
+          <button class="btn btn-ghost" onclick="goStep(5)" id="btnBackFromInstall">Back</button>
+          <button class="btn btn-primary" id="btnInstall" onclick="runInstall()">Install Workspace</button>
+        </div>
+        <div class="wizard-actions section-hidden" id="step6PostActions">
+          <button class="btn btn-ghost" onclick="openWorkspaceFolder()">Open Folder</button>
+          <button class="btn btn-success" onclick="window.location='/monitor'">Open Monitor Dashboard</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="/static/installer.js"></script>
+</body>
+</html>

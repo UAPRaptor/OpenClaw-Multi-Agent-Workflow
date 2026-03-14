@@ -1,0 +1,104 @@
+# Milestones — {{ project_name }}
+
+**Status:** Planning
+**Total Milestones:** [N]
+**Last Updated:** [Date]
+
+---
+
+## Milestone 1 — Project Skeleton
+
+**Status:** READY
+**Build:** v0.1
+**Owner:** Builder
+
+### Deliverables
+- Repository structure created
+- Navigation and routing in place
+- Empty screens/pages scaffolded
+- Build compiles and runs without errors
+
+### Acceptance Criteria
+- [ ] Application launches
+- [ ] Main navigation works
+- [ ] All planned screens are reachable (even if empty)
+
+---
+
+## Milestone 2 — Core Data Layer
+
+**Status:** PENDING (waiting for Milestone 1)
+**Build:** v0.2
+**Owner:** Builder
+
+### Deliverables
+- Data models defined
+- Database/storage layer implemented
+- Basic CRUD operations working
+
+### Acceptance Criteria
+- [ ] Data persists across sessions
+- [ ] All core entities can be created, read, updated, deleted
+
+---
+
+## Milestone 3 — Primary Feature
+
+**Status:** PENDING
+**Build:** v0.3
+**Owner:** Builder
+
+### Deliverables
+- [Primary feature implementation]
+
+### Acceptance Criteria
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
+
+---
+
+## Milestone 4 — Secondary Features
+
+**Status:** PENDING
+**Build:** v0.4
+**Owner:** Builder
+
+---
+
+## Milestone 5 — Testing and Stabilization
+
+**Status:** PENDING
+**Build:** v0.5
+**Owner:** QA + Builder
+
+### Deliverables
+- Full test suite passing
+- All known bugs fixed
+- Performance review complete
+
+---
+
+## Milestone 6 — Release Build
+
+**Status:** PENDING
+**Build:** v1.0
+**Owner:** DevOps
+
+### Deliverables
+- Release package prepared
+- Release notes written
+- Deployment verified
+
+---
+
+## Milestone Status Key
+
+| Status | Meaning |
+|--------|---------|
+| READY | Work can begin |
+| IN-PROGRESS | Builder is actively working |
+| BLOCKED | Requires human input before continuing |
+| QA | Build sent to QA for testing |
+| QA-FAILED | Bugs found, returned to Builder |
+| COMPLETE | Milestone accepted by QA |
+| RELEASED | Deployed to production |

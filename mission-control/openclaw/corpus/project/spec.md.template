@@ -1,0 +1,62 @@
+# Product Specification — {{ project_name }}
+
+**Version:** 1.0 (draft)
+**Author:** PM Agent
+**Status:** Draft — awaiting human approval
+
+---
+
+## Product Goal
+
+[Describe the primary purpose of this application in 2-3 sentences.]
+
+---
+
+## Target Users
+
+[Who will use this application? What are their primary needs?]
+
+---
+
+## Core Features
+
+### Feature 1 — [Name]
+[Description]
+
+### Feature 2 — [Name]
+[Description]
+
+### Feature 3 — [Name]
+[Description]
+
+---
+
+## User Flows
+
+### Flow 1 — [Primary action]
+1. User [action]
+2. System [response]
+3. User [action]
+
+---
+
+## Design Requirements
+
+- [Requirement 1]
+- [Requirement 2]
+
+---
+
+## Out of Scope
+
+- [What this version will NOT include]
+
+---
+
+## Approval
+
+- [ ] Human operator reviewed and approved
+- [ ] Architect validated feasibility
+
+**Approved by:** [Name]
+**Date:** [Date]

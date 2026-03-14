@@ -1,0 +1,78 @@
+# MEMORY — {{ team_name }} Agent Workspace
+
+This file is loaded at the start of every agent session.
+All agents must read this file before beginning any work.
+
+---
+
+## Session Workflow (Required for Every Agent)
+
+### Start of every session
+1. Read `AGENTS.md` — your role and team structure
+2. Read `SOUL.md` — operating principles
+3. Read `active-project.md` — which project is active
+4. Read `projects/[active-project]/AGENT-TODO.md` — current priority queue
+5. Read `projects/[active-project]/AGENT-SESSION-LOG.md` — recent history
+6. Begin work at the top of the Priority Queue unless instructed otherwise
+
+### On every commit / completed task
+Update all three tracking files in the same action:
+- Check off completed items in `AGENT-TODO.md`
+- Add a session log row in `AGENT-SESSION-LOG.md`
+- Update `AGENT-TODO.md` with any new items discovered during work
+
+### End of every session
+Do a final pass on both files:
+- Ensure all completed items are checked off in `AGENT-TODO.md`
+- Ensure the session log row accurately reflects what was done
+- Move completed items to the Completed table in `AGENT-TODO.md`
+
+---
+
+## TODO Difficulty Ratings
+
+Every TODO item must include a difficulty tag:
+
+| Tag | Meaning |
+|-----|---------|
+| `[D1]` | Trivial — config tweak, small copy change |
+| `[D2]` | Easy — small new component or simple API change |
+| `[D3]` | Medium — new feature with DB + API + UI |
+| `[D4]` | Hard — multi-system change, complex workflow |
+| `[D5]` | Very Hard — architectural change or major integration |
+
+Work lowest difficulty first within each priority section unless the PM specifies otherwise.
+
+---
+
+## Project Tracking Files
+
+| File | Location | Purpose |
+|------|----------|---------|
+| AGENT-TODO.md | `projects/[project]/AGENT-TODO.md` | Priority backlog with difficulty ratings |
+| AGENT-SESSION-LOG.md | `projects/[project]/AGENT-SESSION-LOG.md` | One row per session — what was built |
+
+---
+
+## Workspace Files Reference
+
+| File | Purpose |
+|------|---------|
+| AGENTS.md | Team roster, roles, responsibilities |
+| SOUL.md | Operating principles and values |
+| TOOLS.md | Available tools and usage rules |
+| USER.md | Human operator communication guide |
+| MEMORY.md | This file — session workflow and memory |
+| active-project.md | Currently active project |
+
+---
+
+## Long-Term Memory Notes
+
+Use this section to record decisions, patterns, and context that should persist across sessions.
+Add notes below in chronological order. Do not delete old notes — archive them in `memory/` if needed.
+
+---
+
+*Workspace initialized: {{ install_date }}*
+*Team: {{ theme_label }} ({{ team_size }} agents)*

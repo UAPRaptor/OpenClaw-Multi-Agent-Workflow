@@ -1,0 +1,12 @@
+# AGENT-SESSION-LOG — {{ project_name }}
+
+One row per session. Add a row at the end of every work session.
+Keep entries factual and concise — what was built or decided, not how.
+
+---
+
+## Log
+
+| Date | Agent | Items Completed |
+|------|-------|-----------------|
+| {{ install_date }} | System | Project workspace initialized by OpenClaw Mission Control |

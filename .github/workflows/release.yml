@@ -1,0 +1,60 @@
+name: Release
+
+# Triggers when you push a version tag: git tag v0.2.0 && git push --tags
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Verify VERSION file matches tag
+        run: |
+          FILE_VER=$(cat mission-control/VERSION | tr -d '[:space:]')
+          TAG_VER="${{ steps.version.outputs.VERSION }}"
+          if [ "$FILE_VER" != "$TAG_VER" ]; then
+            echo "ERROR: mission-control/VERSION ($FILE_VER) does not match tag ($TAG_VER)"
+            echo "Update mission-control/VERSION before tagging."
+            exit 1
+          fi
+
+      - name: Install zip
+        run: sudo apt-get install -y zip
+
+      - name: Build zip package
+        run: |
+          cd mission-control
+          chmod +x package.sh
+          bash package.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "OpenClaw Mission Control v${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## OpenClaw Mission Control v${{ steps.version.outputs.VERSION }}
+
+            ### What's included
+            - `launch_agents.bat` / `launch_agents.command` — First-time setup + install wizard
+            - `monitor_agents.bat` / `monitor_agents.command` — Live agent dashboard
+            - Full Python app (auto-installs dependencies on first run)
+
+            ### How to install
+            **Windows:** Download the zip, extract it, double-click `launch_agents.bat`
+            **Mac:** Download the zip, extract it, double-click `launch_agents.command`
+
+            Python 3.10+ is installed automatically if not already present.
+          files: |
+            mission-control/releases/openclaw-mission-control-v${{ steps.version.outputs.VERSION }}.zip
+          draft: false
+          prerelease: false

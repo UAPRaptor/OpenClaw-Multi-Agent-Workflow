@@ -22,9 +22,9 @@ Produce standalone distributable binaries that require no Python on the target m
 ### 3. GitHub Repo Setup [D1]
 Wire up the repo for automated releases.
 
-- [ ] [D1] Push this repo to GitHub (create remote if not exists)
-- [ ] [D1] Test the release workflow: bump VERSION to 0.1.0, tag v0.1.0, push — verify zip appears in GitHub Releases
-- [ ] [D1] Verify `.gitignore` excludes `.venv/`, `dist/`, `build/`, `__pycache__/`
+- [x] [D1] Push this repo to GitHub (create remote if not exists) — https://github.com/UAPRaptor/OpenClaw-Multi-Agent-Workflow
+- [ ] [D1] Test the release workflow: bump VERSION, tag v0.1.0, push — verify zip appears in GitHub Releases
+- [x] [D1] Verify `.gitignore` excludes `.venv/`, `dist/`, `build/`, `__pycache__/`
 
 ### 4. Agent Roster Detection [D3] ✅
 ~~The monitor currently uses a hardcoded 4-agent list. Make it dynamic.~~

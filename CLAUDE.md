@@ -92,24 +92,24 @@ bash build.sh     # Mac    → dist/openclaw-mac
 
 ## Versioning & Build Protocol
 
-Version bumping is built into the package scripts — no manual `VERSION` edits needed.
+Version is bumped manually per commit based on the scope of changes:
+- **Patch** (x.y.Z+1) — bug fixes, small corrections
+- **Minor** (x.Y+1.0) — new features, feature gates
+- **Major** (X+1.0.0) — breaking changes, architectural shifts
 
+**To build a release:**
 ```bash
 cd mission-control
-package.bat    # Windows — prompts for bump type, writes VERSION, builds zip
-bash package.sh  # Mac — same
+package.bat    # Windows
+bash package.sh  # Mac
 ```
 
-Bump type prompt at build time:
-- `[1] patch` — bug fixes, small tweaks (x.y.Z+1)
-- `[2] minor` — new features within a milestone (x.Y+1.0)
-- `[3] major` — breaking changes or production-grade release (X+1.0.0)
-- `[4] keep` — rebuild zip without changing version
+The scripts read `VERSION` and build a zip accordingly. No interactive prompts.
 
-After building, tag and push to trigger a GitHub Release:
+**To release:**
 ```bash
-git add mission-control/VERSION
-git commit -m "Bump to vX.Y.Z"
+git add mission-control/VERSION <modified-files>
+git commit -m "Bump to vX.Y.Z: <description>"
 git tag vX.Y.Z && git push --tags
 ```
 

@@ -1,43 +1,13 @@
 #!/bin/bash
 # ── OpenClaw Mission Control — Mac/Linux Package Builder ────────────────────
 # Produces: releases/openclaw-mission-control-vX.Y.Z.zip
+# Version is read from the VERSION file and bumped manually per commit.
 # Run from the mission-control/ directory.
 
 set -e
 cd "$(dirname "$0")"
 
-CURRENT_VERSION=$(cat VERSION | tr -d '[:space:]')
-
-echo ""
-echo " Current version: ${CURRENT_VERSION}"
-echo ""
-echo " Bump type:"
-echo "   [1] patch  (x.y.Z -> x.y.Z+1)"
-echo "   [2] minor  (x.Y.z -> x.Y+1.0)"
-echo "   [3] major  (X.y.z -> X+1.0.0)"
-echo "   [4] keep current version"
-echo ""
-read -p "  Enter choice (1-4): " BUMP_TYPE
-
-IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-
-case "$BUMP_TYPE" in
-  1) PATCH=$((PATCH + 1)) ;;
-  2) MINOR=$((MINOR + 1)); PATCH=0 ;;
-  3) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-  4) ;;
-  *) echo " Invalid choice. Keeping current version." ;;
-esac
-
-VERSION="${MAJOR}.${MINOR}.${PATCH}"
-
-if [ "$VERSION" != "$CURRENT_VERSION" ]; then
-  echo " New version: ${VERSION}"
-  echo -n "$VERSION" > VERSION
-else
-  echo " Keeping version: ${VERSION}"
-fi
-
+VERSION=$(cat VERSION | tr -d '[:space:]')
 PACKAGE_NAME="openclaw-mission-control-v${VERSION}"
 STAGING="/tmp/${PACKAGE_NAME}"
 OUT_DIR="$(pwd)/releases"

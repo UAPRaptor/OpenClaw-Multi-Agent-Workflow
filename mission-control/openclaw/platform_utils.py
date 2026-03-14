@@ -286,12 +286,22 @@ def detect_openclaw_models() -> list[dict]:
                     [binary] + sub, capture_output=True, text=True, timeout=10,
                 )
                 if result.returncode == 0 and result.stdout.strip():
+                    import re as _re
+                    # Primary: parse "Configured models (N): id1, id2, ..." line
+                    # This is the cleanest source — present in verbose doctor output
+                    for line in result.stdout.strip().splitlines():
+                        m = _re.match(r'configured models\s*\(\d+\)\s*:\s*(.+)', line.strip(), _re.IGNORECASE)
+                        if m:
+                            ids = [x.strip() for x in m.group(1).split(',') if x.strip()]
+                            if ids:
+                                return [{"id": mid, "provider": "", "label": mid} for mid in ids]
+
+                    # Fallback: lines that look like model IDs (no spaces, provider/model or provider:model format)
                     models = []
                     for line in result.stdout.strip().splitlines():
                         line = line.strip()
                         if not line or line.startswith("#"):
                             continue
-                        # Strip leading bullet/dash (e.g. "- modelid ok expires in 0m")
                         if line.startswith("-") or line.startswith("*"):
                             line = line[1:].strip()
                         # Strip trailing status text ("ok expires in Xm", "expired", etc.)
@@ -299,7 +309,8 @@ def detect_openclaw_models() -> list[dict]:
                             idx = line.lower().find(marker)
                             if idx != -1:
                                 line = line[:idx].strip()
-                        if line:
+                        # Only accept token-like model IDs: no spaces, must contain / or :
+                        if line and ' ' not in line and _re.search(r'[/:]', line):
                             models.append({"id": line, "provider": "", "label": line})
                     if models:
                         return models

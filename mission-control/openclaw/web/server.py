@@ -451,8 +451,10 @@ async def oauth_start(provider: str) -> JSONResponse:
     if is_windows():
         _sp.Popen(["cmd", "/c", "start", "cmd", "/k", binary, "configure"], shell=False)
     else:
+        # osascript tells Terminal to open a new window and run the command
+        script = f'tell application "Terminal" to do script "{binary} configure"'
         try:
-            _sp.Popen(["open", "-a", "Terminal", "--args", binary, "configure"])
+            _sp.Popen(["osascript", "-e", script])
         except Exception:
             _sp.Popen([binary, "configure"])
     return JSONResponse({

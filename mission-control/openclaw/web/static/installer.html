@@ -154,13 +154,45 @@
         <div class="wizard-title">Choose Workspace Location</div>
         <div class="wizard-sub">This is where all agent files, projects, and builds will be stored.</div>
         <label class="field-label" for="targetDir">Workspace folder path</label>
-        <input type="text" id="targetDir" placeholder="e.g. /Users/you/openclaw-workspace" />
+        <input type="text" id="targetDir" placeholder="e.g. /Users/you/openclaw-workspace" oninput="debounceCheckPath()" />
         <p style="font-size:12px;color:var(--text-muted);margin-top:6px;">
           The folder will be created if it does not exist. Avoid paths inside cloud-synced folders (Dropbox, OneDrive) as agents write files frequently.
         </p>
-        <div class="wizard-actions">
+
+        <!-- Existing workspace detected panel -->
+        <div id="existingWorkspacePanel" class="section-hidden" style="margin-top:16px;">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--accent);">
+            ⚠️ Existing workspace detected at this path
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;" id="existingWorkspaceDesc"></div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px;border:2px solid var(--border);border-radius:var(--radius);" id="modeUpgradeCard" onclick="selectInstallMode('upgrade')">
+              <input type="radio" name="installMode" value="upgrade" style="margin-top:3px;flex-shrink:0">
+              <div>
+                <div style="font-weight:600;font-size:13px;">Upgrade — Add multi-agent team</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Deploy new team configuration alongside the existing agent. All project files and CLAUDE.md are preserved. Existing agent becomes part of the PM role.</div>
+              </div>
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px;border:2px solid var(--border);border-radius:var(--radius);" id="modeReplaceCard" onclick="selectInstallMode('replace')">
+              <input type="radio" name="installMode" value="replace" style="margin-top:3px;flex-shrink:0">
+              <div>
+                <div style="font-weight:600;font-size:13px;">Replace — Fresh team configuration</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Redeploy all workspace config files (AGENTS.md, SOUL.md, MEMORY.md, CLAUDE.md). Project files in projects/ are preserved. Use this to reset a broken setup.</div>
+              </div>
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px;border:2px solid var(--border);border-radius:var(--radius);" id="modeNewCard" onclick="selectInstallMode('new')">
+              <input type="radio" name="installMode" value="new" style="margin-top:3px;flex-shrink:0">
+              <div>
+                <div style="font-weight:600;font-size:13px;">New — Use a different path</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Change the path above to create an independent workspace alongside the existing one.</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="wizard-actions" style="margin-top:16px;">
           <button class="btn btn-ghost" onclick="goStep(2)">Back</button>
-          <button class="btn btn-primary" onclick="goStep(4)">Continue</button>
+          <button class="btn btn-primary" onclick="confirmLocation()">Continue</button>
         </div>
       </div>
 

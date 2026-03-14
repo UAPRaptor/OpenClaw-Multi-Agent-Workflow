@@ -1,0 +1,49 @@
+# Handoff Queue — {{ project_name }}
+
+**Check this file at the start of every session** before looking at AGENT-TODO.md.
+If a row exists where **To = your role** and **Status = ⏳ Pending**, that is your current assignment.
+
+---
+
+## Active Handoffs
+
+| ID | From | To | Artifact | Message | Status |
+|----|------|----|----------|---------|--------|
+| H-001 | — | pm | (new workspace) | Start here: read AGENTS.md, then create `spec.md` for {{ project_name }} by talking to the operator | ⏳ Pending |
+
+---
+
+## How to Respond to a Handoff
+
+1. Find the row where **To = your role** and **Status = ⏳ Pending**
+2. Read the referenced Artifact in the project folder
+3. Complete your work and produce your Key Output(s)
+4. Update `status.md` to reflect the new state
+5. Change this row's Status to **✅ Done**
+6. Add a new row handing off to the next agent (see your role's "Hands to" in AGENTS.md)
+
+---
+
+## How to Write a New Handoff Row
+
+When your deliverable is complete, append a row:
+
+```
+| H-XXX | [your-role] | [next-role] | [artifact.md] | "[One sentence: what to do and where to start]" | ⏳ Pending |
+```
+
+**Good handoff message examples:**
+- `"implementation-plan.md is ready. Build Milestone 1 using the plan. Check human_tasks.md first."`
+- `"Build v0.2 is in builds/build_v0.2. Run full test suite and create tickets for any failures."`
+- `"Three QA-failed tickets resolved. Retest tickets QA-004, QA-005, QA-006."`
+
+---
+
+## Completed Handoffs
+
+| ID | From | To | Artifact | Summary | Completed |
+|----|------|----|----------|---------|-----------|
+
+---
+
+*Created {{ install_date }} by OpenClaw Mission Control*

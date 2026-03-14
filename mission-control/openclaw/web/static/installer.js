@@ -17,6 +17,7 @@ const state = {
   theme: 'historical',
   themes: [],
   updateMode: false,
+  installMode: 'new',
   models: { strategic: '', implementation: '', support: '' },
 };
 
@@ -435,6 +436,90 @@ function closeProviderForm() {
 
 // ── Step 3: Target directory ───────────────────────────────────────────────
 
+let _pathCheckTimer = null;
+
+function debounceCheckPath() {
+  state.targetDir = document.getElementById('targetDir')?.value || '';
+  clearTimeout(_pathCheckTimer);
+  _pathCheckTimer = setTimeout(checkPath, 600);
+}
+
+async function checkPath() {
+  const path = state.targetDir.trim();
+  const panel = document.getElementById('existingWorkspacePanel');
+  const desc = document.getElementById('existingWorkspaceDesc');
+  if (!panel) return;
+
+  if (!path) {
+    panel.classList.add('section-hidden');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/check-workspace-path?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+
+    if (!data.is_workspace) {
+      panel.classList.add('section-hidden');
+      return;
+    }
+
+    // Populate description
+    if (data.is_single_agent) {
+      desc.textContent = `Single-agent workspace detected (${data.agent_count} agent role). Upgrade to add the full multi-agent team.`;
+    } else {
+      desc.textContent = `Multi-agent workspace detected (${data.agent_count} agent roles). Choose how to proceed below.`;
+    }
+
+    // Default selection: upgrade for single-agent, replace for already-multi
+    const defaultMode = data.is_single_agent ? 'upgrade' : 'replace';
+    selectInstallMode(defaultMode);
+    panel.classList.remove('section-hidden');
+  } catch (e) {
+    panel.classList.add('section-hidden');
+  }
+}
+
+function selectInstallMode(mode) {
+  state.installMode = mode;
+
+  ['upgrade', 'replace', 'new'].forEach(m => {
+    const card = document.getElementById(`mode${m.charAt(0).toUpperCase() + m.slice(1)}Card`);
+    const radio = card?.querySelector('input[type=radio]');
+    if (card) card.style.borderColor = m === mode ? 'var(--accent)' : 'var(--border)';
+    if (radio) radio.checked = m === mode;
+  });
+}
+
+function confirmLocation() {
+  const path = state.targetDir.trim();
+  if (!path) {
+    alert('Please enter a workspace folder path.');
+    return;
+  }
+
+  // If user selected "new" mode from the existing-workspace panel,
+  // the path they typed IS the existing workspace — they need a different path.
+  // Highlight the input so they know to change it.
+  if (state.installMode === 'new') {
+    const panel = document.getElementById('existingWorkspacePanel');
+    if (panel && !panel.classList.contains('section-hidden')) {
+      const input = document.getElementById('targetDir');
+      if (input) {
+        input.focus();
+        input.select();
+        input.style.borderColor = 'var(--accent)';
+        setTimeout(() => { input.style.borderColor = ''; }, 2000);
+      }
+      document.getElementById('existingWorkspaceDesc').textContent =
+        'Enter a new path above for the independent workspace.';
+      return;
+    }
+  }
+
+  goStep(4);
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   const input = document.getElementById('targetDir');
   if (input) {
@@ -656,7 +741,7 @@ async function runInstall() {
         theme: state.theme,
         team_size: state.teamSize,
         tier: state.tier,
-        update_mode: state.updateMode,
+        install_mode: state.installMode,
         project_name: 'example-app',
         operator_name: 'Operator',
         model_strategic:      modelStrategic,

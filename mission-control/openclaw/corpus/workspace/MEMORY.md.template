@@ -8,12 +8,13 @@ All agents must read this file before beginning any work.
 ## Session Workflow (Required for Every Agent)
 
 ### Start of every session
-1. Read `AGENTS.md` — your role and team structure
+1. Read `AGENTS.md` — your role, start conditions, and handoff chain
 2. Read `SOUL.md` — operating principles
 3. Read `active-project.md` — which project is active
-4. Read `projects/[active-project]/AGENT-TODO.md` — current priority queue
-5. Read `projects/[active-project]/AGENT-SESSION-LOG.md` — recent history
-6. Begin work at the top of the Priority Queue unless instructed otherwise
+4. **Read `projects/[active-project]/HANDOFF.md`** — check for rows where **To = your role** and **Status = ⏳ Pending**. If one exists, that is your assignment. Start there, not at the TODO.
+5. Read `projects/[active-project]/AGENT-TODO.md` — current priority queue
+6. Read `projects/[active-project]/AGENT-SESSION-LOG.md` — recent history
+7. Begin work at the top of the Priority Queue unless a HANDOFF.md assignment takes priority
 
 ### On every commit / completed task
 Update all three tracking files in the same action:
@@ -58,12 +59,14 @@ Work lowest difficulty first within each priority section unless the PM specifie
 
 | File | Purpose |
 |------|---------|
-| AGENTS.md | Team roster, roles, responsibilities |
+| AGENTS.md | Team roster, roles, handoff chain, start conditions |
 | SOUL.md | Operating principles and values |
 | TOOLS.md | Available tools and usage rules |
 | USER.md | Human operator communication guide |
 | MEMORY.md | This file — session workflow and memory |
 | active-project.md | Currently active project |
+| projects/[name]/HANDOFF.md | **Agent-to-agent handoff queue — check first every session** |
+| projects/[name]/status.md | Current workflow state |
 
 ---
 

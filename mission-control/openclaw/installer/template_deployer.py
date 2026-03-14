@@ -102,6 +102,54 @@ ROLE_OUTPUTS = {
     "research": ["technical-options.md", "research.md"],
 }
 
+# Defines the explicit handoff chain — who each agent receives work from and passes to.
+ROLE_CHAIN = {
+    "pm":        {"receives_from": "Human operator",  "hands_to": "architect"},
+    "architect": {"receives_from": "pm",              "hands_to": "builder"},
+    "builder":   {"receives_from": "architect",       "hands_to": "qa"},
+    "qa":        {"receives_from": "builder",         "hands_to": "devops (pass) or builder (fail)"},
+    "security":  {"receives_from": "builder or qa",   "hands_to": "pm"},
+    "devops":    {"receives_from": "qa",              "hands_to": "pm"},
+    "ux":        {"receives_from": "pm",              "hands_to": "builder"},
+    "research":  {"receives_from": "architect or pm", "hands_to": "architect"},
+}
+
+# Defines exactly what must exist before each agent may begin work.
+ROLE_START_CONDITIONS = {
+    "pm": [
+        "Human operator provides idea, task, or feedback",
+    ],
+    "architect": [
+        "spec.md exists in the project folder",
+        "status.md shows 'spec complete' or PM has written a handoff in HANDOFF.md",
+    ],
+    "builder": [
+        "implementation-plan.md exists in the project folder",
+        "status.md shows 'architect complete' or architect has written a handoff in HANDOFF.md",
+    ],
+    "qa": [
+        "Build artifact exists in builds/",
+        "status.md shows a milestone is complete",
+        "Builder has written a handoff in HANDOFF.md",
+    ],
+    "security": [
+        "Source code changes exist",
+        "QA has passed or PM has requested a security review",
+    ],
+    "devops": [
+        "All QA tickets for this milestone are in 'passed' state",
+        "status.md shows 'qa passed'",
+    ],
+    "ux": [
+        "spec.md exists",
+        "PM has requested UX work via HANDOFF.md or directly",
+    ],
+    "research": [
+        "Architect or PM has identified a research need",
+        "A QUESTION ticket or handoff exists requesting research",
+    ],
+}
+
 
 def load_character_theme(theme: str) -> dict:
     corpus = get_corpus_dir()
@@ -118,6 +166,7 @@ def build_agent_list(roles: list[str], theme_data: dict, model_map: dict) -> lis
         role_chars = theme_data.get("roles", {}).get(role, {})
         group = ROLE_GROUP.get(role, "implementation")
         model = model_map.get(group, "claude-sonnet-4-6")
+        chain = ROLE_CHAIN.get(role, {})
         agents.append({
             "role": role,
             "role_label": ROLE_LABELS.get(role, role.upper()),
@@ -127,6 +176,9 @@ def build_agent_list(roles: list[str], theme_data: dict, model_map: dict) -> lis
             "responsibilities": ROLE_RESPONSIBILITIES.get(role, []),
             "outputs": ROLE_OUTPUTS.get(role, []),
             "model": model,
+            "receives_from": chain.get("receives_from", "—"),
+            "hands_to": chain.get("hands_to", "—"),
+            "start_conditions": ROLE_START_CONDITIONS.get(role, []),
         })
     return agents
 
@@ -138,12 +190,17 @@ def deploy_workspace_files(
     operator_name: str = "Operator",
     default_project: str = "example-app",
     model_map: dict | None = None,
+    install_mode: str = "new",
 ) -> tuple[list[str], list[dict]]:
     """
     Renders and writes all workspace-level template files.
     Returns (list of file paths written, agent list) — agent list is needed
     for generating per-role launcher scripts.
     model_map: {"strategic": "<model-id>", "implementation": "<model-id>", "support": "<model-id>"}
+    install_mode: "new" | "upgrade" | "replace"
+      - "new": normal fresh install
+      - "upgrade": add team files to existing workspace; preserve CLAUDE.md and projects/
+      - "replace": redeploy all workspace config files; preserve projects/ but replace everything else
     """
     if model_map is None:
         model_map = {
@@ -184,6 +241,11 @@ def deploy_workspace_files(
         "MEMORY.md.template": workspace_root / "MEMORY.md",
     }
 
+    # In upgrade mode, preserve the existing CLAUDE.md so the existing agent
+    # retains its context. In new/replace mode, deploy CLAUDE.md.
+    if install_mode != "upgrade":
+        templates["CLAUDE.md.template"] = workspace_root / "CLAUDE.md"
+
     for template_name, dest_path in templates.items():
         tmpl = env.get_template(template_name)
         rendered = tmpl.render(**context)
@@ -222,6 +284,7 @@ def deploy_project_files(
         "status.md.template":            project_path / "status.md",
         "AGENT-TODO.md.template":        project_path / "AGENT-TODO.md",
         "AGENT-SESSION-LOG.md.template": project_path / "AGENT-SESSION-LOG.md",
+        "HANDOFF.md.template":           project_path / "HANDOFF.md",
     }
 
     for template_name, dest_path in templates.items():

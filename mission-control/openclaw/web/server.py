@@ -156,6 +156,39 @@ async def list_themes() -> JSONResponse:
     return JSONResponse(themes)
 
 
+@app.get("/api/check-workspace-path")
+async def check_workspace_path(path: str) -> JSONResponse:
+    """
+    Checks whether a given path is an existing OpenClaw workspace.
+    Returns: {exists: bool, is_workspace: bool, is_single_agent: bool, agent_count: int}
+    """
+    target = Path(path)
+    if not target.exists():
+        return JSONResponse({"exists": False, "is_workspace": False})
+
+    has_agents = (target / "AGENTS.md").exists()
+    has_project = (target / "active-project.md").exists()
+    is_workspace = has_agents or has_project
+
+    agent_count = 0
+    is_single_agent = False
+    if has_agents:
+        try:
+            content = (target / "AGENTS.md").read_text(encoding="utf-8")
+            # Count "### " role headers as a proxy for agent count
+            agent_count = content.count("\n### ")
+            is_single_agent = agent_count <= 1
+        except Exception:
+            pass
+
+    return JSONResponse({
+        "exists": True,
+        "is_workspace": is_workspace,
+        "is_single_agent": is_single_agent,
+        "agent_count": agent_count,
+    })
+
+
 @app.post("/api/install")
 async def run_install(body: dict) -> JSONResponse:
     from openclaw.installer.workspace_builder import build_layout, create_workspace, write_agent_launchers
@@ -167,8 +200,12 @@ async def run_install(body: dict) -> JSONResponse:
     team_size = int(body.get("team_size", 4))
     project_name = body.get("project_name", "example-app")
     operator_name = body.get("operator_name", "Operator")
-    tier = body.get("tier", "standard")
-    update_mode = bool(body.get("update_mode", False))
+    # install_mode: "new" | "upgrade" | "replace"
+    # - new: fresh workspace
+    # - upgrade: add multi-agent team to existing workspace, preserve projects/ and CLAUDE.md
+    # - replace: redeploy all config to existing path, preserve projects/ only
+    install_mode = body.get("install_mode", "new")
+    update_mode = install_mode != "new"  # preserve project files if upgrading
 
     model_map = {
         "strategic":      body.get("model_strategic", "claude-sonnet-4-6"),
@@ -194,7 +231,8 @@ async def run_install(body: dict) -> JSONResponse:
         created = create_workspace(layout)
 
         workspace_files, agents = deploy_workspace_files(
-            target, theme, team_size, operator_name, project_name, model_map=model_map
+            target, theme, team_size, operator_name, project_name,
+            model_map=model_map, install_mode=install_mode,
         )
         created.extend(workspace_files)
 
@@ -212,7 +250,12 @@ async def run_install(body: dict) -> JSONResponse:
         _installer_context["last_installed_path"] = str(target)
         save_last_workspace(target)
 
-        return JSONResponse({"ok": True, "created": created, "workspace": str(target)})
+        return JSONResponse({
+            "ok": True,
+            "created": created,
+            "workspace": str(target),
+            "install_mode": install_mode,
+        })
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 

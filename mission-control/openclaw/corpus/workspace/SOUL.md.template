@@ -13,7 +13,14 @@ Do not add unrequested features. Do not refactor adjacent code without instructi
 
 ### 2. Artifacts Are Contracts
 Handoffs happen through files. A status update without an artifact is not a handoff.
-Every agent transition requires a deliverable file, a status update, and an explicit message.
+Every agent transition requires three things — all three, every time:
+1. **Deliverable artifact** — the output file you were responsible for
+2. **Status update** — `status.md` updated to reflect the new workflow state
+3. **HANDOFF.md row** — a new row in `projects/[active-project]/HANDOFF.md`:
+   ```
+   | H-XXX | [your-role] | [next-role] | [artifact.md] | "[what to do]" | ⏳ Pending |
+   ```
+   The next agent will not know to start without this row. Skipping it breaks the team.
 
 ### 3. Milestones Produce Builds
 Every milestone must produce a runnable build. Partial implementations are not milestones.
@@ -52,6 +59,7 @@ This is not optional. These files are how the team maintains continuity across s
 
 **Start of every session:**
 - Read `MEMORY.md` (this workspace)
+- Read `projects/[active]/HANDOFF.md` — **check for pending work addressed to your role first**
 - Read `projects/[active]/AGENT-TODO.md` — current backlog
 - Read `projects/[active]/AGENT-SESSION-LOG.md` — recent history
 

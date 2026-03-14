@@ -1,89 +1,76 @@
 # OpenClaw Multi-Agent Workflow — TODO
 
-## Priority Queue
+## Build Protocol
 
-### 1. First Run Testing [D2]
-Verify the full install and monitor flow works end-to-end on a real machine.
+Running `package.bat` (Windows) or `package.sh` (Mac) now prompts for a version bump before building:
+- `[1] patch` — bug fixes, small tweaks (x.y.Z+1)
+- `[2] minor` — new features within a version milestone (x.Y+1.0)
+- `[3] major` — breaking changes or production-grade releases (X+1.0.0)
+- `[4] keep` — rebuild without bumping (e.g., testing the build itself)
 
+The script writes the new version to `VERSION` and names the zip accordingly.
+
+---
+
+## Version Roadmap
+
+### v0.2.0 — Validation + Security Foundation
+Confirm the current build works end-to-end, then lock down the security surface before adding features.
+
+**Validation (D1/D2)**
 - [ ] [D1] Install Python deps: `cd mission-control && pip install -r requirements.txt`
-- [ ] [D2] Run `python -m openclaw install` — verify browser opens, all 6 wizard steps work (Check → Models → Location → Team → Theme → Install)
-- [ ] [D2] Complete installer: configure a model provider, pick 4-agent team, Historical theme, default workspace path
-- [ ] [D2] Run `python -m openclaw monitor` — verify dashboard loads and reflects workspace state
 - [ ] [D1] Run `python -m openclaw status` — verify text summary output
+- [ ] [D1] Test release workflow: bump VERSION via package.bat, tag, push → verify zip in GitHub Releases
+- [ ] [D2] Run `python -m openclaw install` — verify browser opens, all wizard steps work end-to-end
+- [ ] [D2] Run `python -m openclaw monitor` — verify dashboard loads and reflects workspace state
 - [ ] [D2] Test `launch_agents.bat` double-click on a Windows machine without Python pre-installed
 
-### 2. PyInstaller Binary Build [D2]
-Produce standalone distributable binaries that require no Python on the target machine.
-
-- [ ] [D2] Run `build.bat` on Windows → verify `dist/openclaw-windows.exe` launches and opens browser
-- [ ] [D2] Run `build.sh` on Mac → verify `dist/openclaw-mac` works
-- [ ] [D1] Attach binaries to a GitHub Release alongside the zip
-
-### 3. GitHub Repo Setup [D1]
-Wire up the repo for automated releases.
-
-- [x] [D1] Push this repo to GitHub (create remote if not exists) — https://github.com/UAPRaptor/OpenClaw-Multi-Agent-Workflow
-- [ ] [D1] Test the release workflow: bump VERSION, tag v0.1.0, push — verify zip appears in GitHub Releases
-- [x] [D1] Verify `.gitignore` excludes `.venv/`, `dist/`, `build/`, `__pycache__/`
-
-### 4. Agent Roster Detection [D3] ✅
-~~The monitor currently uses a hardcoded 4-agent list. Make it dynamic.~~
-Completed — file_watcher now parses AGENTS.md dynamically.
-
-### 5. Installer Enhancements [D2]
-Small UX improvements identified during planning.
-
-- [x] [D2] Step 2: Add OS-appropriate default path to the directory input field on page load
-- [ ] [D2] Step 4: Show character roster preview when a theme is selected (which character = which role)
-- [x] [D1] Add "Open workspace folder" button on success screen
-
-### 5b. Handoff Coordination System [D3] ✅
-~~Agents had no defined mechanism to notify each other when work is complete.~~
-Completed — HANDOFF.md queue protocol built into every workspace.
-
-### 6. Monitor Enhancements [D3]
-Nice-to-have dashboard improvements.
-
-- [ ] [D3] Milestone completion count for overnight mode (parse overnight-report.md)
-- [ ] [D2] Ticket stale badge: highlight tickets in `in-progress` or `blocked` > 4 hours
-- [ ] [D2] Click kanban column to expand and show ticket file names
-- [ ] [D3] Multi-workspace support: monitor more than one workspace simultaneously
-
-### 7. Security Hardening [D3]
-Issues identified in code review — security-critical items for a tool that orchestrates agents.
-
-- [ ] [D3] Add authentication to the web server — at minimum a random bearer token generated at startup, displayed in terminal, required for all API calls and WebSocket connections
-- [ ] [D2] Encrypt API keys at rest — provider keys saved via `/api/configure-provider` are currently plaintext in OpenClaw config; use OS keyring (`keyring` library) or encrypted JSON with a machine-derived key
-- [ ] [D2] Ollama installer integrity — verify checksums for downloaded Ollama binaries before executing; pin to known-good versions
-- [x] [D1] Populate deny list in `settings.json.base` — currently empty `allowedTools` array; add sensible defaults for dangerous commands
+**Security (D2/D3)**
+- [ ] [D2] Encrypt API keys at rest — use OS keyring (`keyring` library) or machine-derived encrypted JSON; currently plaintext in OpenClaw config
+- [ ] [D2] Ollama installer integrity — verify checksums for downloaded binaries before executing; pin to known-good versions
+- [ ] [D3] Add authentication to the web server — random bearer token at startup, displayed in terminal, required for all API calls and WebSocket connections
 - [ ] [D3] Add Pydantic request validation to all API endpoints — currently raw dict access with no schema enforcement
 
-### 8. Code Quality [D2]
-Correctness and robustness fixes.
+---
 
-- [x] [D2] Fix shallow copy race in `state_store.get()` — `return self._state` shares the mutable dict; use `copy.deepcopy()` or return frozen snapshots
-- [x] [D1] Fix WebSocket ping interval leak in `app.js` — `setInterval` inside `ws.onopen` creates a new interval on every reconnect without clearing the previous one
-- [x] [D1] Replace deprecated `datetime.utcnow()` in `state_store.py` with `datetime.now(tz=timezone.utc)`
-- [x] [D2] Launcher scripts still run `claude --model` instead of `openclaw --model` — update `workspace_builder.py` launcher generation
+### v0.3.0 — Monitor & Dashboard Improvements
+Richer real-time visibility into agent activity.
 
-### 9. Monitor Feature Gaps [D3]
-Dashboard currently shows summaries but lacks actionable detail.
+- [ ] [D2] Ticket stale badge — highlight tickets in `in-progress` or `blocked` > 4 hours
+- [ ] [D2] Click kanban column to expand and show ticket file names
+- [ ] [D2] Session log viewer — show recent AGENT-SESSION-LOG.md entries per agent in dashboard
+- [ ] [D2] Installer: show character roster preview when a theme is selected (role → character mapping)
+- [ ] [D3] Milestone completion count for overnight mode (parse overnight-report.md)
+- [ ] [D3] Multi-workspace support — monitor more than one workspace simultaneously
+
+---
+
+### v0.4.0 — Agent Control & Project Management
+Move from passive monitoring to active control from the dashboard.
 
 - [ ] [D3] Show ticket content when clicking kanban columns (not just counts)
 - [ ] [D3] Add agent start/stop controls from the dashboard
-- [ ] [D2] Add session log viewer — show recent AGENT-SESSION-LOG.md entries per agent
 - [ ] [D3] Add project management from UI — create/switch active projects without editing files
 
-### 10. Testing [D3]
-Zero test coverage currently.
+---
 
-- [ ] [D3] Add pytest suite: unit tests for state_store, alert_engine, template_deployer, platform_utils
+### v0.5.0 — Testing Coverage
+Establish a test baseline before the 1.0 release.
+
 - [ ] [D2] Add integration test: install flow end-to-end (create temp workspace, verify files)
 - [ ] [D2] Add frontend smoke tests (playwright or similar) for installer wizard steps
+- [ ] [D3] Add pytest suite: unit tests for state_store, alert_engine, template_deployer, platform_utils
 
-### 11. Documentation [D1]
+---
+
+### v1.0.0 — Production Distribution
+Standalone binaries and polished docs. Production-ready release.
+
 - [ ] [D1] Update `README.md` with full usage instructions and screenshot
 - [ ] [D1] Add `QUICKSTART.txt` to the release zip for non-technical users
+- [ ] [D2] Run `build.bat` on Windows → verify `dist/openclaw-windows.exe` launches and opens browser
+- [ ] [D2] Run `build.sh` on Mac → verify `dist/openclaw-mac` works
+- [ ] [D1] Attach binaries to a GitHub Release alongside the zip
 
 ---
 
@@ -105,3 +92,4 @@ Zero test coverage currently.
 | 2026-03-14 | Code quality D1/D2 fixes: datetime.utcnow() → timezone.utc, WebSocket ping interval leak, shallow copy race (deepcopy), launcher scripts (claude→openclaw), deny list populated, "Open Folder" button on success screen |
 | 2026-03-14 | Repo published to GitHub; v0.1.0 zip packaged (73KB); package.ps1 added as reliable Windows packager |
 | 2026-03-14 | Agent handoff coordination: HANDOFF.md.template (per-project kickoff queue), ROLE_CHAIN + ROLE_START_CONDITIONS in template_deployer.py, AGENTS.md/SOUL.md/MEMORY.md templates updated with handoff protocol, three install modes (new/upgrade/replace), /api/check-workspace-path, installer Step 3 upgrade UI (debounceCheckPath, checkPath, selectInstallMode, confirmLocation), install_mode wired through server.py + installer.js |
+| 2026-03-14 | Version auto-increment added to package.bat and package.sh (patch/minor/major/keep prompt); CLAUDE-TODO.md restructured into version milestones (v0.2.0 → v1.0.0) |

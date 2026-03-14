@@ -90,7 +90,29 @@ bash build.sh     # Mac    → dist/openclaw-mac
 - `mission-control-alerts.log` is append-only (forensic trail)
 - No telemetry, no outbound calls
 
-## Versioning
+## Versioning & Build Protocol
 
-Bump `mission-control/VERSION`, commit, then `git tag vX.Y.Z && git push --tags`.
+Version bumping is built into the package scripts — no manual `VERSION` edits needed.
+
+```bash
+cd mission-control
+package.bat    # Windows — prompts for bump type, writes VERSION, builds zip
+bash package.sh  # Mac — same
+```
+
+Bump type prompt at build time:
+- `[1] patch` — bug fixes, small tweaks (x.y.Z+1)
+- `[2] minor` — new features within a milestone (x.Y+1.0)
+- `[3] major` — breaking changes or production-grade release (X+1.0.0)
+- `[4] keep` — rebuild zip without changing version
+
+After building, tag and push to trigger a GitHub Release:
+```bash
+git add mission-control/VERSION
+git commit -m "Bump to vX.Y.Z"
+git tag vX.Y.Z && git push --tags
+```
+
 GitHub Actions automatically builds the release zip and posts it to GitHub Releases.
+
+See `CLAUDE-TODO.md` for the full version roadmap (v0.2.0 → v1.0.0).

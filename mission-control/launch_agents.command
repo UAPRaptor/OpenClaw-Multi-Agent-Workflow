@@ -5,14 +5,25 @@
 
 set -e
 
-# Change to the directory containing this script
-cd "$(dirname "$0")"
+# Resolve directories
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV_DIR="$SCRIPT_DIR/.venv"
+APP_DIR="$SCRIPT_DIR/mission-control"
 
 echo ""
 echo " =========================================="
 echo "  OpenClaw Mission Control"
 echo " =========================================="
 echo ""
+
+# Verify the app directory exists
+if [ ! -d "$APP_DIR" ]; then
+    echo " [X] mission-control/ folder not found."
+    echo "     Make sure you extracted the full zip and are running from inside it."
+    echo ""
+    read -p "Press Enter to close..."
+    exit 1
+fi
 
 # ── Step 1: Check for Python 3.10+ ─────────────────────────────────────────
 find_python() {
@@ -61,8 +72,6 @@ fi
 echo " [+] Found Python: $($PYTHON --version)"
 
 # ── Step 2: Create/activate virtual environment ─────────────────────────────
-VENV_DIR="$(pwd)/.venv"
-
 if [ ! -f "$VENV_DIR/bin/activate" ]; then
     echo " [.] Creating virtual environment..."
     "$PYTHON" -m venv "$VENV_DIR"
@@ -73,6 +82,7 @@ source "$VENV_DIR/bin/activate"
 
 # ── Step 3: Install/update dependencies ─────────────────────────────────────
 echo " [.] Checking dependencies..."
+cd "$APP_DIR"
 pip install -q -r requirements.txt
 echo " [+] Dependencies ready."
 echo ""

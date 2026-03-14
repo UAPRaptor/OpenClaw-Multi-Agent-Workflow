@@ -27,7 +27,21 @@ Confirm the current build works end-to-end, then lock down the security surface 
 
 ---
 
-### v0.3.0 — Monitor & Dashboard Improvements
+### v0.3.0 — OpenClaw Agent Registration
+Make installed agents first-class citizens of the OpenClaw universe so they appear in OpenClaw's native dashboard and can be chatted with directly.
+
+**Problem:** The installer creates workspace files (AGENTS.md, SOUL.md, run scripts) but never registers agents with OpenClaw's own agent directory system at `~/.openclaw/agents/`. Agents are invisible to OpenClaw's native UI and chat interface.
+
+**Required work:**
+- [ ] [D3] Create OpenClaw agent directories — for each installed role, create `~/.openclaw/agents/<role>/` with a CLAUDE.md baked with the character persona, so OpenClaw recognizes the agent
+- [ ] [D3] Register agents at install time — installer calls `openclaw` with appropriate flags (or writes config) to register each agent so they show in OpenClaw's Agents list
+- [ ] [D3] Launch scripts per agent — generate per-role launcher scripts (`run-PM.sh`, `run-ARCHITECT.sh`, etc.) that start an OpenClaw session in the correct agent directory with the correct model assigned
+- [ ] [D2] Mission Control "Start Agent" button — add a start button to each agent card on the dashboard that runs that agent's launcher script in a new Terminal window
+- [ ] [D4] Click-to-chat with agent — clicking an agent card in Mission Control opens a chat session with that agent (either via OpenClaw's native chat or an embedded chat panel)
+
+---
+
+### v0.4.0 — Monitor & Dashboard Improvements
 Richer real-time visibility into agent activity.
 
 - [ ] [D2] Ticket stale badge — highlight tickets in `in-progress` or `blocked` > 4 hours
@@ -39,16 +53,15 @@ Richer real-time visibility into agent activity.
 
 ---
 
-### v0.4.0 — Agent Control & Project Management
+### v0.5.0 — Agent Control & Project Management
 Move from passive monitoring to active control from the dashboard.
 
 - [ ] [D3] Show ticket content when clicking kanban columns (not just counts)
-- [ ] [D3] Add agent start/stop controls from the dashboard
 - [ ] [D3] Add project management from UI — create/switch active projects without editing files
 
 ---
 
-### v0.5.0 — Testing Coverage
+### v0.6.0 — Testing Coverage
 Establish a test baseline before the 1.0 release.
 
 - [ ] [D2] Add integration test: install flow end-to-end (create temp workspace, verify files)

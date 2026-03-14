@@ -2,13 +2,7 @@
 
 ## Build Protocol
 
-Running `package.bat` (Windows) or `package.sh` (Mac) now prompts for a version bump before building:
-- `[1] patch` — bug fixes, small tweaks (x.y.Z+1)
-- `[2] minor` — new features within a version milestone (x.Y+1.0)
-- `[3] major` — breaking changes or production-grade releases (X+1.0.0)
-- `[4] keep` — rebuild without bumping (e.g., testing the build itself)
-
-The script writes the new version to `VERSION` and names the zip accordingly.
+Run `package.bat` (Windows) or `package.sh` (Mac) to build a zip. Version is managed manually per commit — I decide patch/minor/major based on the scope of changes.
 
 ---
 

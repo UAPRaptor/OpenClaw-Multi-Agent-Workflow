@@ -289,7 +289,17 @@ def detect_openclaw_models() -> list[dict]:
                     models = []
                     for line in result.stdout.strip().splitlines():
                         line = line.strip()
-                        if line and not line.startswith("#"):
+                        if not line or line.startswith("#"):
+                            continue
+                        # Strip leading bullet/dash (e.g. "- modelid ok expires in 0m")
+                        if line.startswith("-") or line.startswith("*"):
+                            line = line[1:].strip()
+                        # Strip trailing status text ("ok expires in Xm", "expired", etc.)
+                        for marker in (" ok ", " expired", " expires", " warning", " error"):
+                            idx = line.lower().find(marker)
+                            if idx != -1:
+                                line = line[:idx].strip()
+                        if line:
                             models.append({"id": line, "provider": "", "label": line})
                     if models:
                         return models

@@ -556,6 +556,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 const TIER_AGENTS = { lite: 4, standard: 4, power: 8 };
 
 async function loadHardware() {
+  // Pre-populate datalist and restore saved values immediately (before any awaits)
+  // so dropdowns work even while async calls are in-flight.
+  if (_allModels.length) _populateDatalist(_allModels);
+  if (state.models.strategic)      document.getElementById('modelStrategic').value = state.models.strategic;
+  if (state.models.implementation) document.getElementById('modelImplementation').value = state.models.implementation;
+  if (state.models.support)        document.getElementById('modelSupport').value = state.models.support;
+
   try {
     const res = await fetch('/api/hardware');
     const hw = await res.json();

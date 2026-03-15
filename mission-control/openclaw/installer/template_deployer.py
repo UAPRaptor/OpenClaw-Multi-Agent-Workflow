@@ -195,13 +195,12 @@ def deploy_workspace_files(
     """
     Renders and writes all workspace-level template files.
     Returns (list of file paths written, agent list, team_name) — agent list
-    and team_name are needed for generating per-role launcher scripts and
-    per-agent identity directories.
+    and team_name are used by the caller to register agents and generate launchers.
     model_map: {"strategic": "<model-id>", "implementation": "<model-id>", "support": "<model-id>"}
     install_mode: "new" | "upgrade" | "replace"
       - "new": normal fresh install
-      - "upgrade": add team files to existing workspace; preserve CLAUDE.md and projects/
-      - "replace": redeploy all workspace config files; preserve projects/ but replace everything else
+      - "upgrade": add team files to existing workspace; preserve projects/
+      - "replace": redeploy all workspace config files; preserve projects/ only
     """
     if model_map is None:
         model_map = {
@@ -235,17 +234,13 @@ def deploy_workspace_files(
 
     written = []
     templates = {
-        "AGENTS.md.template": workspace_root / "AGENTS.md",
-        "SOUL.md.template":   workspace_root / "SOUL.md",
-        "TOOLS.md.template":  workspace_root / "TOOLS.md",
-        "USER.md.template":   workspace_root / "USER.md",
-        "MEMORY.md.template": workspace_root / "MEMORY.md",
+        "AGENTS.md.template":    workspace_root / "AGENTS.md",
+        "SOUL.md.template":      workspace_root / "SOUL.md",
+        "TOOLS.md.template":     workspace_root / "TOOLS.md",
+        "USER.md.template":      workspace_root / "USER.md",
+        "MEMORY.md.template":    workspace_root / "MEMORY.md",
+        "HEARTBEAT.md.template": workspace_root / "HEARTBEAT.md",
     }
-
-    # In upgrade mode, preserve the existing CLAUDE.md so the existing agent
-    # retains its context. In new/replace mode, deploy CLAUDE.md.
-    if install_mode != "upgrade":
-        templates["CLAUDE.md.template"] = workspace_root / "CLAUDE.md"
 
     for template_name, dest_path in templates.items():
         tmpl = env.get_template(template_name)
@@ -254,46 +249,6 @@ def deploy_workspace_files(
         written.append(str(dest_path))
 
     return written, agents, context["team_name"]
-
-
-def deploy_agent_directories(
-    workspace_root: Path,
-    agents: list[dict],
-    team_name: str = "Development",
-) -> list[str]:
-    """
-    Creates per-agent subdirectories at workspace/agents/{role}/ and renders
-    a per-agent CLAUDE.md identity file in each one.
-    Returns list of file paths written.
-    """
-    corpus = get_corpus_dir()
-    env = Environment(
-        loader=FileSystemLoader(str(corpus / "workspace")),
-        undefined=StrictUndefined,
-        trim_blocks=True,
-        lstrip_blocks=True,
-    )
-    tmpl = env.get_template("AGENT-CLAUDE.md.template")
-
-    agents_dir = workspace_root / "agents"
-    agents_dir.mkdir(exist_ok=True)
-    written = []
-
-    for agent in agents:
-        agent_dir = agents_dir / agent["role"]
-        agent_dir.mkdir(exist_ok=True)
-
-        context = {
-            **agent,
-            "team_name": team_name,
-            "install_date": date.today().isoformat(),
-        }
-        rendered = tmpl.render(**context)
-        claude_path = agent_dir / "CLAUDE.md"
-        claude_path.write_text(rendered, encoding="utf-8")
-        written.append(str(claude_path))
-
-    return written
 
 
 def deploy_project_files(

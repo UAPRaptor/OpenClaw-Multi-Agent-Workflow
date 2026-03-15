@@ -1,0 +1,14 @@
+# HEARTBEAT — {{ team_name }}
+
+Agents update this file to signal active status during sessions.
+
+| Field | Value |
+|-------|-------|
+| Last Updated | — |
+| Active Agent | — |
+| Current Task | — |
+| Status | idle |
+
+---
+
+*Workspace initialized: {{ install_date }}*

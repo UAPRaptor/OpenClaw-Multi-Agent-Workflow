@@ -11,51 +11,41 @@ cd /d "%~dp0"
 REM Read version
 set /p VERSION=<VERSION
 set PACKAGE_NAME=openclaw-mission-control-v%VERSION%
-set STAGING=%TEMP%\%PACKAGE_NAME%
 set OUT_DIR=%~dp0releases
 set ZIP_OUT=%OUT_DIR%\%PACKAGE_NAME%.zip
+set APP_DIR=%~dp0
 
 echo.
 echo  Building package: %PACKAGE_NAME%
 echo.
 
-REM Create staging directory
-if exist "%STAGING%" rmdir /s /q "%STAGING%"
-mkdir "%STAGING%"
-
-REM Copy launcher files
-copy /y launch_agents.bat    "%STAGING%\launch_agents.bat"    >nul
-copy /y launch_agents.command "%STAGING%\launch_agents.command" >nul
-copy /y monitor_agents.bat   "%STAGING%\monitor_agents.bat"   >nul
-copy /y monitor_agents.command "%STAGING%\monitor_agents.command" >nul
-copy /y VERSION              "%STAGING%\VERSION"              >nul
-
-REM Copy mission-control app code (exclude build artifacts)
-robocopy "%~dp0" "%STAGING%\mission-control" ^
-  /E /XD .venv dist build __pycache__ .git releases ^
-  /XF *.pyc *.pyo *.spec >nul
-
-REM Create releases directory
-if not exist "%OUT_DIR%" mkdir "%OUT_DIR%"
-
-REM Zip using PowerShell (built into Windows 10+)
-if exist "%ZIP_OUT%" del "%ZIP_OUT%"
-powershell -NoProfile -Command "Compress-Archive -Path '%STAGING%' -DestinationPath '%ZIP_OUT%' -Force"
+REM Delegate everything to PowerShell — avoids cmd.exe robocopy/redirect issues
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$appDir = '%APP_DIR%'.TrimEnd('\');" ^
+  "$staging = [System.IO.Path]::Combine($env:TEMP, '%PACKAGE_NAME%');" ^
+  "$outDir  = '%OUT_DIR%';" ^
+  "$zipOut  = '%ZIP_OUT%';" ^
+  "if (Test-Path $staging) { Remove-Item $staging -Recurse -Force };" ^
+  "New-Item -ItemType Directory $staging | Out-Null;" ^
+  "$launchers = @('launch_agents.bat','launch_agents.command','monitor_agents.bat','monitor_agents.command','SETUP-MAC.command','VERSION');" ^
+  "foreach ($f in $launchers) { Copy-Item (Join-Path $appDir $f) (Join-Path $staging $f) };" ^
+  "$mcDst = Join-Path $staging 'mission-control';" ^
+  "Copy-Item $appDir $mcDst -Recurse -Force;" ^
+  "$excludeDirs = @('.venv','dist','build','__pycache__','.git','releases');" ^
+  "foreach ($d in $excludeDirs) { $p = Join-Path $mcDst $d; if (Test-Path $p) { Remove-Item $p -Recurse -Force } };" ^
+  "Get-ChildItem $mcDst -Recurse -Include '*.pyc','*.pyo','*.spec' | Remove-Item -Force;" ^
+  "if (-not (Test-Path $outDir)) { New-Item -ItemType Directory $outDir | Out-Null };" ^
+  "if (Test-Path $zipOut) { Remove-Item $zipOut -Force };" ^
+  "Compress-Archive -Path $staging -DestinationPath $zipOut -Force;" ^
+  "Remove-Item $staging -Recurse -Force;" ^
+  "Write-Host ' [+] Package created: releases\%PACKAGE_NAME%.zip';" ^
+  "$size = (Get-Item $zipOut).Length; Write-Host (' Size: ' + $size + ' bytes')"
 
 if %errorlevel% neq 0 (
-    echo  [X] Zip failed.
+    echo  [X] Build failed. See error above.
     pause
     exit /b 1
 )
-
-REM Cleanup staging
-rmdir /s /q "%STAGING%"
-
-echo  [+] Package created: releases\%PACKAGE_NAME%.zip
-echo.
-
-REM Show file size
-for %%F in ("%ZIP_OUT%") do echo  Size: %%~zF bytes
 
 echo.
 endlocal

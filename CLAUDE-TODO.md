@@ -22,7 +22,7 @@ Bugs reported during testing — fix these before resuming feature work. Each fi
 
 - [x] [D2] **Dashboard: Clarify "Install" tab label** — Renamed "Install" to "New Workspace" in both nav bars and the workspace card. [📷](training/bugs/bug4-install-tab-unclear.png)
 
-- [ ] [D2] **Dashboard: Add agent settings/details modal** — Add a cog/gear icon on each agent card in the "AGENT STATUS" section. Clicking it opens a modal showing detailed info: workspace location, OpenClaw registration status, last heartbeat, model assignment, etc. Helps users understand if agents are healthy and where their workspace files live. [📷](training/bugs/bug4-agent-details.png)
+- [x] [D2] **Dashboard: Add agent settings/details modal** — ⚙ cog button on each agent card opens modal with: status, last active, model, workspace path, launcher paths (Mac + Windows), OpenClaw agent dir, registration status (✔/✘). [📷](training/bugs/bug4-agent-details.png)
 
 - [x] [D2] **Installer Step 3: "New location" button does nothing** — Root cause: goStep(1) triggered loadPrereqs() which re-detected the existing workspace and bounced back to step 0 in a loop. Fixed by jumping directly to step 2 (prereqs already passed). [📷](training/bugs/bug5-new-location-broken.png)
 

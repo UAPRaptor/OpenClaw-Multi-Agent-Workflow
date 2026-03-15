@@ -151,11 +151,37 @@ def read_agent_activity(workspace_root: Path, agents: list[str]) -> dict:
                 status = "unknown"
             last_active = datetime.fromtimestamp(last_mod, tz=timezone.utc).isoformat()
 
+        # Launcher paths
+        launcher_sh  = str(workspace_root / "launchers" / f"run-{role}.sh")
+        launcher_bat = str(workspace_root / "launchers" / f"run-{role}.bat")
+
+        # OpenClaw registration check: ~/.openclaw/agents/{role}/IDENTITY.md
+        openclaw_agents = Path.home() / ".openclaw" / "agents"
+        identity_path   = openclaw_agents / role / "IDENTITY.md"
+        openclaw_registered = identity_path.exists()
+        openclaw_dir    = str(openclaw_agents / role)
+
+        # Model — read from launcher script if it exists
+        model = "—"
+        sh = Path(launcher_sh)
+        if sh.exists():
+            for line in sh.read_text(encoding="utf-8", errors="ignore").splitlines():
+                m = re.search(r"--model\s+(\S+)", line)
+                if m:
+                    model = m.group(1)
+                    break
+
         result[role] = {
             "role": role,
             "character": characters.get(role, "—"),
             "status": status,
             "last_active": last_active,
+            "workspace_path": str(workspace_root),
+            "launcher_sh": launcher_sh,
+            "launcher_bat": launcher_bat,
+            "openclaw_dir": openclaw_dir,
+            "openclaw_registered": openclaw_registered,
+            "model": model,
         }
 
     return result

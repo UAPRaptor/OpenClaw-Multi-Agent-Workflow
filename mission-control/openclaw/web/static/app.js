@@ -91,7 +91,10 @@ async function dismissAlert(id) {
 
 // ── Agents ─────────────────────────────────────────────────────────────────
 
+let _agentsData = {};
+
 function renderAgents(agents) {
+  _agentsData = agents;
   const grid = document.getElementById('agentGrid');
   const entries = Object.values(agents);
 
@@ -102,6 +105,7 @@ function renderAgents(agents) {
 
   grid.innerHTML = entries.map(a => `
     <div class="agent-card">
+      <button class="agent-cog" onclick="showAgentDetails('${escHtml(a.role || '')}')" title="Agent details">⚙</button>
       <div class="agent-card-role">${escHtml(a.role || '')}</div>
       <div class="agent-card-char">${escHtml(a.character || '—')}</div>
       <div class="agent-card-status">
@@ -115,6 +119,42 @@ function renderAgents(agents) {
 
 function statusLabel(s) {
   return { active: 'Active', idle: 'Idle', stalled: 'Stalled', unknown: 'Unknown' }[s] || 'Unknown';
+}
+
+function showAgentDetails(role) {
+  const a = _agentsData[role];
+  if (!a) return;
+  document.getElementById('agentModalTitle').textContent = a.character || role;
+  document.getElementById('agentModalRole').textContent = role.toUpperCase();
+
+  const regBadge = a.openclaw_registered
+    ? '<span class="badge-ok">✔ Registered</span>'
+    : '<span class="badge-warn">✘ Not registered</span>';
+
+  const rows = [
+    ['Status',              statusLabel(a.status)],
+    ['Last Active',         a.last_active ? timeAgo(a.last_active) : '—'],
+    ['Model',               a.model || '—'],
+    ['Workspace',           a.workspace_path || '—'],
+    ['Launcher (Mac/Linux)', a.launcher_sh  || '—'],
+    ['Launcher (Windows)',   a.launcher_bat || '—'],
+    ['OpenClaw Agent Dir',   a.openclaw_dir || '—'],
+    ['OpenClaw Registration', regBadge],
+  ];
+
+  document.getElementById('agentModalBody').innerHTML = rows.map(([label, value]) => `
+    <div class="agent-modal-row">
+      <div class="agent-modal-label">${escHtml(label)}</div>
+      <div class="agent-modal-value">${value}</div>
+    </div>
+  `).join('');
+
+  document.getElementById('agentModalOverlay').classList.add('open');
+}
+
+function closeAgentModal(e) {
+  if (e && e.target !== document.getElementById('agentModalOverlay')) return;
+  document.getElementById('agentModalOverlay').classList.remove('open');
 }
 
 // ── Project ────────────────────────────────────────────────────────────────

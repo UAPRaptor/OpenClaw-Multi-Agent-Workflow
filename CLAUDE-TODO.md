@@ -14,7 +14,7 @@ Bugs reported during testing — fix these before resuming feature work. Each fi
 
 - [ ] [D2] **Mac: SETUP-MAC.command blocked by Gatekeeper even after xattr fix** — macOS still shows "could not be executed because you do not have appropriate access privileges" when double-clicking SETUP-MAC.command. Current xattr self-heal only works if the file can already execute. Need a solution that survives zip extraction without requiring any Terminal commands first. Complication: the fix must work regardless of zip version name (e.g. `openclaw-mission-control-v0.2.3`) changing each release. [📷](training/bugs/bug1-setup-mac-permissions.png)
 
-- [ ] [D2] **Step 2 (Model Setup): Allow unchecking configured models** — The green checkmarks on "CONFIGURED PROVIDERS" look interactive but aren't clickable. Users expect to be able to uncheck models they don't want to deploy with their agents. Make checkmarks toggleable to filter the model list, then pass selected models through the install flow. [📷](training/bugs/bug2-model-setup-uncheckable.png)
+- [x] [D2] **Step 2 (Model Setup): Allow unchecking configured models** — Models are now toggleable checkboxes. Clicking unchecks (strikethrough + grayed), removes from datalist dropdowns, and click again to re-enable. Selection persists through the install flow via state.deselectedModels. [📷](training/bugs/bug2-model-setup-uncheckable.png)
 
 - [ ] [D3] **Step 5 (Theme): Add custom theme option** — Users should be able to create their own character theme instead of choosing from the 5 presets. Add a "Create Custom Theme" button that opens a form to input 8 character names (one per role: PM, Architect, Builder, QA, Security, DevOps, UX, Research). [📷](training/bugs/bug3-theme-custom.png)
 

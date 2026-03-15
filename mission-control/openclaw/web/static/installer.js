@@ -19,6 +19,7 @@ const state = {
   updateMode: false,
   installMode: 'new',
   models: { strategic: '', implementation: '', support: '' },
+  deselectedModels: new Set(),  // model IDs the user has unchecked
 };
 
 // ── XSS protection ────────────────────────────────────────────────────────
@@ -161,28 +162,52 @@ async function loadModels() {
     const res = await fetch('/api/configured-models');
     const data = await res.json();
     const models = data.models || [];
-    if (models.length > 0) {
-      configuredEl.innerHTML = models.map(m =>
-        `<div class="model-item">
-          <span class="model-item-id">✅ ${escHtml(m.id)}</span>
-          <span class="model-item-provider">${escHtml(m.provider || '')}</span>
-        </div>`
-      ).join('');
-      autoFillModelAssignments(models);
-    } else {
-      configuredEl.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No providers configured yet. Add one below, or skip to configure OpenClaw separately.</p>';
-    }
+    _renderConfiguredModels(models);
+    if (models.length > 0) autoFillModelAssignments(models);
   } catch (e) {
-    configuredEl.innerHTML = '<p style="color:var(--text-muted);font-size:13px">Could not detect configured models.</p>';
+    const configuredEl = document.getElementById('configuredModels');
+    if (configuredEl) configuredEl.innerHTML = '<p style="color:var(--text-muted);font-size:13px">Could not detect configured models.</p>';
   }
 }
 
 function _populateDatalist(models) {
   const dl = document.getElementById('modelOptions');
   if (!dl) return;
-  dl.innerHTML = models.map(m =>
+  // Only include models the user hasn't unchecked
+  const active = models.filter(m => !state.deselectedModels.has(m.id));
+  dl.innerHTML = active.map(m =>
     `<option value="${escHtml(m.id)}" label="${escHtml(m.label)} (${escHtml(m.provider)})">`
   ).join('');
+}
+
+function _renderConfiguredModels(models) {
+  const configuredEl = document.getElementById('configuredModels');
+  if (!configuredEl) return;
+  if (!models.length) {
+    configuredEl.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No providers configured yet. Add one below, or skip to configure OpenClaw separately.</p>';
+    return;
+  }
+  configuredEl.innerHTML = models.map(m => {
+    const checked = !state.deselectedModels.has(m.id);
+    return `<div class="model-item" onclick="toggleConfiguredModel('${escHtml(m.id)}')"
+        style="cursor:pointer;user-select:none" title="${checked ? 'Click to exclude from deployment' : 'Click to include in deployment'}">
+        <span style="font-size:16px;line-height:1">${checked ? '✅' : '⬜'}</span>
+        <span class="model-item-id" style="${checked ? '' : 'opacity:0.4;text-decoration:line-through'}">${escHtml(m.id)}</span>
+        <span class="model-item-provider">${escHtml(m.provider || '')}</span>
+      </div>`;
+  }).join('');
+}
+
+function toggleConfiguredModel(id) {
+  if (state.deselectedModels.has(id)) {
+    state.deselectedModels.delete(id);
+  } else {
+    state.deselectedModels.add(id);
+  }
+  // Re-render the list and rebuild datalist with updated selection
+  const currentModels = _allModels.length ? _allModels : [];
+  _renderConfiguredModels(currentModels);
+  _populateDatalist(currentModels);
 }
 
 function autoFillModelAssignments(models) {
@@ -211,28 +236,14 @@ async function refreshConfiguredModels() {
     const res = await fetch('/api/configured-models');
     const data = await res.json();
     const models = data.models || [];
-    const configuredEl = document.getElementById('configuredModels');
-    if (models.length > 0 && configuredEl) {
-      configuredEl.innerHTML = models.map(m =>
-        `<div class="model-item">
-          <span class="model-item-id">✅ ${escHtml(m.id)}</span>
-          <span class="model-item-provider">${escHtml(m.provider || '')}</span>
-        </div>`
-      ).join('');
+    // Merge into _allModels so toggles and datalist stay in sync
+    for (const m of models) {
+      if (!_allModels.find(x => x.id === m.id)) _allModels.push(m);
+    }
+    _renderConfiguredModels(_allModels.length ? _allModels : models);
+    if (models.length > 0) {
       autoFillModelAssignments(models);
-      // Merge newly detected models into datalist
-      const dl = document.getElementById('modelOptions');
-      if (dl) {
-        const existingIds = new Set(Array.from(dl.options).map(o => o.value));
-        for (const m of models) {
-          if (!existingIds.has(m.id)) {
-            const opt = document.createElement('option');
-            opt.value = m.id;
-            opt.label = `${m.label || m.id} (${m.provider || 'custom'})`;
-            dl.appendChild(opt);
-          }
-        }
-      }
+      _populateDatalist(_allModels.length ? _allModels : models);
     }
     return models;
   } catch (e) {

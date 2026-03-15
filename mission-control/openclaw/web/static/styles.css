@@ -208,6 +208,18 @@ input[type="text"]:focus, input[type="number"]:focus {
 .theme-card .theme-label { font-weight: 600; margin-bottom: 4px; }
 .theme-card .theme-desc  { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
 
+/* ── Agent roster (theme step preview) ── */
+.agent-roster {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.agent-roster input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 /* ── Team size buttons ── */
 .team-options {
   display: grid;

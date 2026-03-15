@@ -20,7 +20,12 @@ const state = {
   installMode: 'new',
   models: { strategic: '', implementation: '', support: '' },
   deselectedModels: new Set(),  // model IDs the user has unchecked
+  customCharacters: {},         // {role: character_name} — overrides theme defaults
 };
+
+const ROLES_MINIMAL = ['pm', 'architect', 'builder', 'qa'];
+const ROLES_FULL    = ['pm', 'architect', 'builder', 'qa', 'security', 'devops', 'ux', 'research'];
+const ROLE_LABELS_MAP = { pm: 'PM', architect: 'Architect', builder: 'Builder', qa: 'QA', security: 'Security', devops: 'DevOps', ux: 'UX', research: 'Research' };
 
 // ── XSS protection ────────────────────────────────────────────────────────
 
@@ -652,7 +657,13 @@ async function loadThemes() {
   try {
     const res = await fetch('/api/themes');
     state.themes = await res.json();
+    // Pre-populate customCharacters from the default theme so roster shows immediately
+    const defaultTheme = state.themes.find(t => t.id === state.theme);
+    if (defaultTheme && Object.keys(state.customCharacters).length === 0) {
+      state.customCharacters = Object.assign({}, defaultTheme.roles);
+    }
     renderThemes();
+    renderAgentPreview();
   } catch (e) {
     grid.innerHTML = '<p style="color:var(--red)">Could not load themes.</p>';
   }
@@ -660,17 +671,65 @@ async function loadThemes() {
 
 function renderThemes() {
   const grid = document.getElementById('themeGrid');
-  grid.innerHTML = state.themes.map(t => `
+  const presetCards = state.themes.map(t => `
     <div class="theme-card ${t.id === state.theme ? 'selected' : ''}" onclick="selectTheme('${escHtml(t.id)}')">
       <div class="theme-label">${escHtml(t.label)}</div>
       <div class="theme-desc">${escHtml(t.description)}</div>
     </div>
   `).join('');
+  const customCard = `
+    <div class="theme-card ${'custom' === state.theme ? 'selected' : ''}" onclick="selectTheme('custom')">
+      <div class="theme-label">✏ Custom Theme</div>
+      <div class="theme-desc">Name your own characters — one per agent role.</div>
+    </div>
+  `;
+  grid.innerHTML = presetCards + customCard;
 }
 
 function selectTheme(id) {
   state.theme = id;
+  // Pre-populate customCharacters from the selected preset so edits start pre-filled
+  if (id === 'custom') {
+    state.customCharacters = {};
+  } else {
+    const themeData = state.themes.find(t => t.id === id);
+    state.customCharacters = themeData ? Object.assign({}, themeData.roles) : {};
+  }
   renderThemes();
+  renderAgentPreview();
+}
+
+function renderAgentPreview() {
+  const container = document.getElementById('agentPreview');
+  if (!container) return;
+  const roles = state.teamSize === 8 ? ROLES_FULL : ROLES_MINIMAL;
+  const isCustom = state.theme === 'custom';
+
+  container.style.display = 'block';
+  container.innerHTML = `
+    <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
+      ${isCustom ? 'Enter a character name for each role' : 'Edit names before installing — changes apply to your workspace only'}
+    </div>
+    ${roles.map(role => {
+      const defaultVal = state.customCharacters[role] || '';
+      return `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+          <div style="width:90px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;flex-shrink:0;">${ROLE_LABELS_MAP[role] || role}</div>
+          <input
+            type="text"
+            value="${escHtml(defaultVal)}"
+            placeholder="${isCustom ? 'Enter name' : 'Leave blank to keep default'}"
+            oninput="updateCharacterName('${role}', this.value)"
+            style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:13px;color:var(--text);"
+          />
+        </div>
+      `;
+    }).join('')}
+  `;
+}
+
+function updateCharacterName(role, value) {
+  state.customCharacters[role] = value.trim();
 }
 
 // ── Step 6: Review & Install ───────────────────────────────────────────────
@@ -760,7 +819,8 @@ async function runInstall() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         target,
-        theme: state.theme,
+        theme: state.theme === 'custom' ? 'historical' : state.theme,  // fallback for template load
+        custom_characters: state.customCharacters,
         team_size: state.teamSize,
         tier: state.tier,
         install_mode: state.installMode,

@@ -160,17 +160,19 @@ def load_character_theme(theme: str) -> dict:
         return json.load(f)
 
 
-def build_agent_list(roles: list[str], theme_data: dict, model_map: dict) -> list[dict]:
+def build_agent_list(roles: list[str], theme_data: dict, model_map: dict, custom_characters: dict | None = None) -> list[dict]:
     agents = []
     for role in roles:
         role_chars = theme_data.get("roles", {}).get(role, {})
         group = ROLE_GROUP.get(role, "implementation")
         model = model_map.get(group, "claude-sonnet-4-6")
         chain = ROLE_CHAIN.get(role, {})
+        # custom_characters overrides the theme character name for any role
+        character = (custom_characters or {}).get(role) or role_chars.get("character", "—")
         agents.append({
             "role": role,
             "role_label": ROLE_LABELS.get(role, role.upper()),
-            "character": role_chars.get("character", "—"),
+            "character": character,
             "philosophy": role_chars.get("philosophy", ""),
             "decision_style": role_chars.get("decision_style", ""),
             "responsibilities": ROLE_RESPONSIBILITIES.get(role, []),
@@ -191,6 +193,7 @@ def deploy_workspace_files(
     default_project: str = "example-app",
     model_map: dict | None = None,
     install_mode: str = "new",
+    custom_characters: dict | None = None,
 ) -> tuple[list[str], list[dict]]:
     """
     Renders and writes all workspace-level template files.
@@ -219,7 +222,7 @@ def deploy_workspace_files(
 
     theme_data = load_character_theme(theme)
     roles = AGENT_ROLES_FULL if team_size == 8 else AGENT_ROLES_MINIMAL
-    agents = build_agent_list(roles, theme_data, model_map)
+    agents = build_agent_list(roles, theme_data, model_map, custom_characters=custom_characters)
 
     context = {
         "team_name": theme_data.get("label", "Development"),

@@ -146,10 +146,16 @@ async def list_themes() -> JSONResponse:
     for f in sorted((corpus / "characters").glob("*.json")):
         try:
             data = _json.loads(f.read_text(encoding="utf-8"))
+            # Build simplified {role: character_name} map for roster preview
+            roles_map = {
+                role: info.get("character", "")
+                for role, info in data.get("roles", {}).items()
+            }
             themes.append({
                 "id": f.stem,
                 "label": data.get("label", f.stem),
                 "description": data.get("description", ""),
+                "roles": roles_map,
             })
         except Exception:
             pass
@@ -198,6 +204,7 @@ async def run_install(body: dict) -> JSONResponse:
 
     target = Path(body.get("target", str(Path.home() / "openclaw-workspace")))
     theme = body.get("theme", "historical")
+    custom_characters = body.get("custom_characters") or {}  # {role: character_name} overrides
     team_size = int(body.get("team_size", 4))
     project_name = body.get("project_name", "example-app")
     operator_name = body.get("operator_name", "Operator")
@@ -234,6 +241,7 @@ async def run_install(body: dict) -> JSONResponse:
         workspace_files, agents, team_name = deploy_workspace_files(
             target, theme, team_size, operator_name, project_name,
             model_map=model_map, install_mode=install_mode,
+            custom_characters=custom_characters or None,
         )
         created.extend(workspace_files)
 

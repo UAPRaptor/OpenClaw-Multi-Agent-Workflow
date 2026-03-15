@@ -16,9 +16,9 @@ Bugs reported during testing — fix these before resuming feature work. Each fi
 
 - [x] [D2] **Step 2 (Model Setup): Allow unchecking configured models** — Models are now toggleable checkboxes. Clicking unchecks (strikethrough + grayed), removes from datalist dropdowns, and click again to re-enable. Selection persists through the install flow via state.deselectedModels. [📷](training/bugs/bug2-model-setup-uncheckable.png)
 
-- [ ] [D3] **Step 5 (Theme): Add custom theme option** — Users should be able to create their own character theme instead of choosing from the 5 presets. Add a "Create Custom Theme" button that opens a form to input 8 character names (one per role: PM, Architect, Builder, QA, Security, DevOps, UX, Research). [📷](training/bugs/bug3-theme-custom.png)
+- [x] [D3] **Step 5 (Theme): Add custom theme option** — "✏ Custom Theme" card added; selecting it shows blank name inputs for all roles; names passed as custom_characters at install time. [📷](training/bugs/bug3-theme-custom.png)
 
-- [ ] [D3] **Step 5 (Theme): Allow editing character names after theme selection** — After selecting a theme (e.g. Star Trek), let user edit individual character assignments before installing. Example: swap "Captain Picard" (default Architect) for "Kirk" (custom). This requires a new post-selection step or inline edit UI. [📷](training/bugs/bug3-theme-edit.png)
+- [x] [D3] **Step 5 (Theme): Allow editing character names after theme selection** — Editable roster appears below theme cards immediately after selection; inputs pre-filled with theme defaults; edits override character names at install time. [📷](training/bugs/bug3-theme-edit.png)
 
 - [x] [D2] **Dashboard: Clarify "Install" tab label** — Renamed "Install" to "New Workspace" in both nav bars and the workspace card. [📷](training/bugs/bug4-install-tab-unclear.png)
 

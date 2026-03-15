@@ -73,8 +73,12 @@ function selectUpdateMode(path) {
 
 function selectNewMode() {
   state.updateMode = false;
+  state.installMode = 'new';
   state.targetDir = '';
-  goStep(1);
+  // Skip goStep(1) — prereqs already passed to reach this screen.
+  // Going to step 1 would re-run loadPrereqs() which re-detects the existing
+  // workspace and immediately bounces back to step 0 (appears to do nothing).
+  goStep(2);
 }
 
 // ── Step 1: Prerequisites ──────────────────────────────────────────────────

@@ -9,6 +9,33 @@ Run `package.bat` (Windows) or `package.sh` (Mac) to build a zip. Version is man
 
 ---
 
+## Bug Queue
+Bugs reported during testing — fix these before resuming feature work. Each fix = patch bump.
+
+- [ ] [D2] **Mac: SETUP-MAC.command blocked by Gatekeeper even after xattr fix** — macOS still shows "could not be executed because you do not have appropriate access privileges" when double-clicking SETUP-MAC.command. Current xattr self-heal only works if the file can already execute. Need a solution that survives zip extraction without requiring any Terminal commands first. Complication: the fix must work regardless of zip version name (e.g. `openclaw-mission-control-v0.2.3`) changing each release. [📷](training/bugs/bug1-setup-mac-permissions.png)
+
+- [ ] [D2] **Step 2 (Model Setup): Allow unchecking configured models** — The green checkmarks on "CONFIGURED PROVIDERS" look interactive but aren't clickable. Users expect to be able to uncheck models they don't want to deploy with their agents. Make checkmarks toggleable to filter the model list, then pass selected models through the install flow. [📷](training/bugs/bug2-model-setup-uncheckable.png)
+
+- [ ] [D3] **Step 5 (Theme): Add custom theme option** — Users should be able to create their own character theme instead of choosing from the 5 presets. Add a "Create Custom Theme" button that opens a form to input 8 character names (one per role: PM, Architect, Builder, QA, Security, DevOps, UX, Research). [📷](training/bugs/bug3-theme-custom.png)
+
+- [ ] [D3] **Step 5 (Theme): Allow editing character names after theme selection** — After selecting a theme (e.g. Star Trek), let user edit individual character assignments before installing. Example: swap "Captain Picard" (default Architect) for "Kirk" (custom). This requires a new post-selection step or inline edit UI. [📷](training/bugs/bug3-theme-edit.png)
+
+- [x] [D2] **Dashboard: Clarify "Install" tab label** — Renamed "Install" to "New Workspace" in both nav bars and the workspace card. [📷](training/bugs/bug4-install-tab-unclear.png)
+
+- [ ] [D2] **Dashboard: Add agent settings/details modal** — Add a cog/gear icon on each agent card in the "AGENT STATUS" section. Clicking it opens a modal showing detailed info: workspace location, OpenClaw registration status, last heartbeat, model assignment, etc. Helps users understand if agents are healthy and where their workspace files live. [📷](training/bugs/bug4-agent-details.png)
+
+- [x] [D2] **Installer Step 3: "New location" button does nothing** — Root cause: goStep(1) triggered loadPrereqs() which re-detected the existing workspace and bounced back to step 0 in a loop. Fixed by jumping directly to step 2 (prereqs already passed). [📷](training/bugs/bug5-new-location-broken.png)
+
+- [ ] [D3] **Installer Step 3: Allow manually browsing for workspaces** — Add a "Browse" button or manual path input field so users can select a workspace that isn't automatically detected by the system. Useful if workspace is on an external drive, network location, or in a non-standard directory. [📷](training/bugs/bug5-browse-workspace.png)
+
+- [ ] [D3] **Installer Step 3: Manage existing agents in detected workspace** — When an existing workspace with agents is found, show options to: (1) view/edit existing agent names, (2) delete specific agents, (3) add new agents from selected theme without overwriting existing ones, (4) replace all agents. Currently just offers "Update" or "Start Fresh" with no granularity. [📷](training/bugs/bug5-manage-agents.png)
+
+- [ ] [D3] **Agents created by Mission Control don't appear in OpenClaw dashboard** — After installing agents via Mission Control, they never show up in OpenClaw's native Agents list. OpenClaw gateway may need restart/refresh to discover them, or they may not be properly registered in `~/.openclaw/agents/`. Investigate registration flow and whether agents are correctly written to OpenClaw's discovery directories. [📷](training/bugs/bug6-openclaw-discovery.png)
+
+- [ ] [D3] **Workspace path mismatch between Mission Control and OpenClaw** — Mission Control creates workspaces in user-specified location (e.g. `~/Documents/openclaw-workspace`) but OpenClaw shows a different workspace path (`/users/openclaw/.openclaw/workspace`). If paths don't align, OpenClaw won't find agents registered by Mission Control. Unify paths or ensure both systems use the same workspace directory. [📷](training/bugs/bug6-workspace-path-mismatch.png)
+
+---
+
 ## Version Roadmap
 
 ### v0.2.0 — Validation + Security Foundation

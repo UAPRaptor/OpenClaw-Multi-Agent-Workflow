@@ -33,9 +33,9 @@ Make installed agents first-class citizens of the OpenClaw universe so they appe
 **Problem:** The installer creates workspace files (AGENTS.md, SOUL.md, run scripts) but never registers agents with OpenClaw's own agent directory system at `~/.openclaw/agents/`. Agents are invisible to OpenClaw's native UI and chat interface.
 
 **Required work:**
-- [x] [D3] Create OpenClaw agent directories — for each installed role, create `~/.openclaw/agents/<role>/` with a CLAUDE.md baked with the character persona, so OpenClaw recognizes the agent
-- [x] [D3] Register agents at install time — installer writes `~/.openclaw/agents/main/{role}/models.json` per agent (name + model) so they appear in OpenClaw's Agents list
-- [x] [D3] Launch scripts per agent — generate per-role launcher scripts (`run-PM.sh`, `run-ARCHITECT.sh`, etc.) that start an OpenClaw session in `workspace/agents/{role}/` with the correct model assigned
+- [x] [D3] Create OpenClaw agent directories — for each installed role, create `~/.openclaw/agents/{role}/` with `IDENTITY.md` (character persona, role, philosophy) — loaded by `openclaw start --agent {role}`
+- [x] [D3] Register agents at install time — `agent_registrar.py` renders `IDENTITY.md.template` per role and writes to `~/.openclaw/agents/{role}/IDENTITY.md`
+- [x] [D3] Launch scripts per agent — per-role launchers run `openclaw start --agent {role} --model {model}` from workspace root; also added missing `HEARTBEAT.md` to workspace
 - [ ] [D2] Mission Control "Start Agent" button — add a start button to each agent card on the dashboard that runs that agent's launcher script in a new Terminal window
 - [ ] [D4] Click-to-chat with agent — clicking an agent card in Mission Control opens a chat session with that agent (either via OpenClaw's native chat or an embedded chat panel)
 
@@ -100,4 +100,5 @@ Standalone binaries and polished docs. Production-ready release.
 | 2026-03-14 | Repo published to GitHub; v0.1.0 zip packaged (73KB); package.ps1 added as reliable Windows packager |
 | 2026-03-14 | Agent handoff coordination: HANDOFF.md.template (per-project kickoff queue), ROLE_CHAIN + ROLE_START_CONDITIONS in template_deployer.py, AGENTS.md/SOUL.md/MEMORY.md templates updated with handoff protocol, three install modes (new/upgrade/replace), /api/check-workspace-path, installer Step 3 upgrade UI (debounceCheckPath, checkPath, selectInstallMode, confirmLocation), install_mode wired through server.py + installer.js |
 | 2026-03-14 | Version auto-increment added to package.bat and package.sh (patch/minor/major/keep prompt); CLAUDE-TODO.md restructured into version milestones (v0.2.0 → v1.0.0) |
-| 2026-03-14 | v0.2.0 — Per-agent identity and OpenClaw registration: AGENT-CLAUDE.md.template (per-agent identity with character persona + role + shared file pointers); deploy_agent_directories() in template_deployer.py; agent_registrar.py (~/.openclaw/agents/main/{role}/models.json); launchers now cd into workspace/agents/{role}/ instead of workspace root; wired through server.py install endpoint |
+| 2026-03-14 | v0.2.0 — Agent registration first attempt (wrong — used CLAUDE.md naming, reverted in v0.2.1) |
+| 2026-03-15 | v0.2.1 — Correct OpenClaw agent registration: IDENTITY.md.template in corpus/agents/ deployed to ~/.openclaw/agents/{role}/IDENTITY.md; HEARTBEAT.md added to workspace; launchers use openclaw start --agent {role} --model {model}; all CLAUDE.md workspace files removed |

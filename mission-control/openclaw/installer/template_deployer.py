@@ -194,8 +194,9 @@ def deploy_workspace_files(
 ) -> tuple[list[str], list[dict]]:
     """
     Renders and writes all workspace-level template files.
-    Returns (list of file paths written, agent list) — agent list is needed
-    for generating per-role launcher scripts.
+    Returns (list of file paths written, agent list, team_name) — agent list
+    and team_name are needed for generating per-role launcher scripts and
+    per-agent identity directories.
     model_map: {"strategic": "<model-id>", "implementation": "<model-id>", "support": "<model-id>"}
     install_mode: "new" | "upgrade" | "replace"
       - "new": normal fresh install
@@ -252,7 +253,47 @@ def deploy_workspace_files(
         dest_path.write_text(rendered, encoding="utf-8")
         written.append(str(dest_path))
 
-    return written, agents
+    return written, agents, context["team_name"]
+
+
+def deploy_agent_directories(
+    workspace_root: Path,
+    agents: list[dict],
+    team_name: str = "Development",
+) -> list[str]:
+    """
+    Creates per-agent subdirectories at workspace/agents/{role}/ and renders
+    a per-agent CLAUDE.md identity file in each one.
+    Returns list of file paths written.
+    """
+    corpus = get_corpus_dir()
+    env = Environment(
+        loader=FileSystemLoader(str(corpus / "workspace")),
+        undefined=StrictUndefined,
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+    tmpl = env.get_template("AGENT-CLAUDE.md.template")
+
+    agents_dir = workspace_root / "agents"
+    agents_dir.mkdir(exist_ok=True)
+    written = []
+
+    for agent in agents:
+        agent_dir = agents_dir / agent["role"]
+        agent_dir.mkdir(exist_ok=True)
+
+        context = {
+            **agent,
+            "team_name": team_name,
+            "install_date": date.today().isoformat(),
+        }
+        rendered = tmpl.render(**context)
+        claude_path = agent_dir / "CLAUDE.md"
+        claude_path.write_text(rendered, encoding="utf-8")
+        written.append(str(claude_path))
+
+    return written
 
 
 def deploy_project_files(

@@ -75,15 +75,17 @@ def write_agent_launchers(workspace: Path, agents: list[dict]) -> list[str]:
     for agent in agents:
         role = agent["role"]
         label = agent.get("role_label", role)
+        character = agent.get("character", role.upper())
         model = agent.get("model", "claude-sonnet-4-6")
+        agent_dir_str = str(workspace / "agents" / role)
 
         # Unix / macOS
         sh_path = launchers_dir / f"run-{role}.sh"
         sh_path.write_text(
             f"#!/bin/bash\n"
-            f"# Launch {label} agent\n"
+            f"# Launch {label} agent ({character})\n"
             f"# Model: {model}\n"
-            f'cd "{workspace_str}"\n'
+            f'cd "{agent_dir_str}"\n'
             f"openclaw --model {model}\n",
             encoding="utf-8",
         )
@@ -97,9 +99,9 @@ def write_agent_launchers(workspace: Path, agents: list[dict]) -> list[str]:
         bat_path = launchers_dir / f"run-{role}.bat"
         bat_path.write_text(
             f"@echo off\n"
-            f"REM Launch {label} agent\n"
+            f"REM Launch {label} agent ({character})\n"
             f"REM Model: {model}\n"
-            f'cd /d "{workspace_str}"\n'
+            f'cd /d "{agent_dir_str}"\n'
             f"openclaw --model {model}\n",
             encoding="utf-8",
         )

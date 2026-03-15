@@ -192,8 +192,9 @@ async def check_workspace_path(path: str) -> JSONResponse:
 @app.post("/api/install")
 async def run_install(body: dict) -> JSONResponse:
     from openclaw.installer.workspace_builder import build_layout, create_workspace, write_agent_launchers
-    from openclaw.installer.template_deployer import deploy_workspace_files, deploy_project_files
+    from openclaw.installer.template_deployer import deploy_workspace_files, deploy_project_files, deploy_agent_directories
     from openclaw.installer.config_writer import write_claude_settings
+    from openclaw.installer.agent_registrar import register_openclaw_agents
 
     target = Path(body.get("target", str(Path.home() / "openclaw-workspace")))
     theme = body.get("theme", "historical")
@@ -230,14 +231,20 @@ async def run_install(body: dict) -> JSONResponse:
         layout = build_layout(target, project_name)
         created = create_workspace(layout)
 
-        workspace_files, agents = deploy_workspace_files(
+        workspace_files, agents, team_name = deploy_workspace_files(
             target, theme, team_size, operator_name, project_name,
             model_map=model_map, install_mode=install_mode,
         )
         created.extend(workspace_files)
 
+        agent_claude_files = deploy_agent_directories(target, agents, team_name)
+        created.extend(agent_claude_files)
+
         launcher_files = write_agent_launchers(target, agents)
         created.extend(launcher_files)
+
+        agent_reg_files = register_openclaw_agents(agents)
+        created.extend(agent_reg_files)
 
         project_path = target / "projects" / project_name
         project_files = deploy_project_files(project_path, project_name, update_mode=update_mode)

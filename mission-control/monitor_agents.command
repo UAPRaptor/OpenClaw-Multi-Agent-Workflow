@@ -2,6 +2,10 @@
 # OpenClaw Mission Control — Monitor (Mac)
 # Double-click to open the live agent dashboard.
 
+# Strip macOS quarantine flag
+xattr -cr "$(dirname "$0")" 2>/dev/null || true
+chmod +x "$(dirname "$0")"/*.command 2>/dev/null || true
+
 # Resolve directories
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"

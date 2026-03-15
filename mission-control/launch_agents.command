@@ -5,6 +5,12 @@
 
 set -e
 
+# Strip macOS quarantine flag from this entire folder.
+# macOS marks downloaded files with com.apple.quarantine which blocks execution.
+# This removes it so future double-clicks work without Gatekeeper prompts.
+xattr -cr "$(dirname "$0")" 2>/dev/null || true
+chmod +x "$(dirname "$0")"/*.command 2>/dev/null || true
+
 # Resolve directories
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"

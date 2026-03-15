@@ -22,14 +22,15 @@ rm -rf "$STAGING"
 mkdir -p "$STAGING"
 
 # Copy launcher files
-cp launch_agents.bat     "$STAGING/launch_agents.bat"
-cp launch_agents.command "$STAGING/launch_agents.command"
-cp monitor_agents.bat    "$STAGING/monitor_agents.bat"
+cp launch_agents.bat      "$STAGING/launch_agents.bat"
+cp launch_agents.command  "$STAGING/launch_agents.command"
+cp monitor_agents.bat     "$STAGING/monitor_agents.bat"
 cp monitor_agents.command "$STAGING/monitor_agents.command"
-cp VERSION               "$STAGING/VERSION"
+cp SETUP-MAC.command      "$STAGING/SETUP-MAC.command"
+cp VERSION                "$STAGING/VERSION"
 
-# Make Mac launchers executable inside the zip
-chmod +x "$STAGING/launch_agents.command" "$STAGING/monitor_agents.command"
+# Make all Mac .command files executable inside the zip
+chmod +x "$STAGING/"*.command
 
 # Copy mission-control app code (exclude build artifacts)
 rsync -a \

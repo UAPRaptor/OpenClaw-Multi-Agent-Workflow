@@ -1,0 +1,22 @@
+# Force LF line endings for all shell scripts and Mac launchers.
+# Without this, Windows Git converts them to CRLF which breaks execution on Mac.
+
+*.sh          text eol=lf
+*.command     text eol=lf
+*.bat         text eol=crlf
+*.py          text eol=lf
+*.json        text eol=lf
+*.md          text eol=lf
+*.txt         text eol=lf
+*.html        text eol=lf
+*.css         text eol=lf
+*.js          text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+
+# Binary files — no line ending conversion
+*.zip         binary
+*.exe         binary
+*.png         binary
+*.jpg         binary
+*.ico         binary

@@ -12,7 +12,7 @@ Run `package.bat` (Windows) or `package.sh` (Mac) to build a zip. Version is man
 ## Bug Queue
 Bugs reported during testing — fix these before resuming feature work. Each fix = patch bump.
 
-- [ ] [D2] **Mac: SETUP-MAC.command blocked by Gatekeeper even after xattr fix** — macOS still shows "could not be executed because you do not have appropriate access privileges" when double-clicking SETUP-MAC.command. Current xattr self-heal only works if the file can already execute. Need a solution that survives zip extraction without requiring any Terminal commands first. Complication: the fix must work regardless of zip version name (e.g. `openclaw-mission-control-v0.2.3`) changing each release. [📷](training/bugs/bug1-setup-mac-permissions.png)
+- [x] [D2] **Mac: SETUP-MAC.command blocked by Gatekeeper** — Root cause: zip built on Windows (package.bat) can't set Unix execute bits, so all .command files land with no execute permission on Mac. Fixed with README-MAC.txt at zip root: one Terminal paste handles xattr, chmod, and launch regardless of version name or build OS. [📷](training/bugs/bug1-setup-mac-permissions.png)
 
 - [x] [D2] **Step 2 (Model Setup): Allow unchecking configured models** — Models are now toggleable checkboxes. Clicking unchecks (strikethrough + grayed), removes from datalist dropdowns, and click again to re-enable. Selection persists through the install flow via state.deselectedModels. [📷](training/bugs/bug2-model-setup-uncheckable.png)
 

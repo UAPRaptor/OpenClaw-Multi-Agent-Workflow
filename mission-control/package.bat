@@ -27,7 +27,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$zipOut  = '%ZIP_OUT%';" ^
   "if (Test-Path $staging) { Remove-Item $staging -Recurse -Force };" ^
   "New-Item -ItemType Directory $staging | Out-Null;" ^
-  "$launchers = @('launch_agents.bat','launch_agents.command','monitor_agents.bat','monitor_agents.command','SETUP-MAC.command','VERSION');" ^
+  "$launchers = @('launch_agents.bat','launch_agents.command','monitor_agents.bat','monitor_agents.command','SETUP-MAC.command','README-MAC.txt','VERSION');" ^
   "foreach ($f in $launchers) { Copy-Item (Join-Path $appDir $f) (Join-Path $staging $f) };" ^
   "$mcDst = Join-Path $staging 'mission-control';" ^
   "Copy-Item $appDir $mcDst -Recurse -Force;" ^

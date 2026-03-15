@@ -27,6 +27,7 @@ cp launch_agents.command  "$STAGING/launch_agents.command"
 cp monitor_agents.bat     "$STAGING/monitor_agents.bat"
 cp monitor_agents.command "$STAGING/monitor_agents.command"
 cp SETUP-MAC.command      "$STAGING/SETUP-MAC.command"
+cp README-MAC.txt         "$STAGING/README-MAC.txt"
 cp VERSION                "$STAGING/VERSION"
 
 # Make all Mac .command files executable inside the zip

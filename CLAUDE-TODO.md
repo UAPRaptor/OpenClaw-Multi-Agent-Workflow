@@ -2,7 +2,10 @@
 
 ## Build Protocol
 
-Run `package.bat` (Windows) or `package.sh` (Mac) to build a zip. Version is managed manually per commit — I decide patch/minor/major based on the scope of changes.
+Run `package.bat` (Windows) or `package.sh` (Mac) to build a zip. Version is managed manually per commit:
+- **Every bug fix** → patch increment (x.y.Z+1), no matter how small
+- **New feature** → minor increment (x.Y+1.0)
+- **Breaking change / architectural shift** → major increment (X+1.0.0)
 
 ---
 

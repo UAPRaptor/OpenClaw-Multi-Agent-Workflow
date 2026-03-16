@@ -309,6 +309,62 @@ That keeps the workflow native to OpenClaw.
 
 ---
 
+---
+
+## 15. Gateway WebSocket Protocol (Reverse-Engineered, v2026.3.13)
+
+The gateway exposes a WebSocket at `ws://127.0.0.1:18789` using a JSON-RPC style protocol.
+
+### Connection handshake
+
+1. Server immediately sends: `{"type":"event","event":"connect.challenge","payload":{"nonce":"<uuid>","ts":<ms>}}`
+2. Client sends connect request:
+   ```json
+   {"type":"req","id":"<uuid>","method":"connect","params":{
+     "minProtocol":3,"maxProtocol":3,
+     "client":{"id":"cli","version":"mc","platform":"server","mode":"cli","instanceId":"mc"},
+     "role":"operator",
+     "scopes":["operator.admin","operator.read","operator.write"],
+     "caps":[],"auth":{"token":"<token>"},"userAgent":"mc","locale":"en"
+   }}
+   ```
+3. Server responds: `{"type":"res","id":"<uuid>","ok":true,"payload":{"type":"hello-ok",...}}`
+
+### Valid client IDs (from JS bundle)
+- `cli` — no device signing required, token auth only ✅
+- `openclaw-control-ui` — requires device identity (SubtleCrypto signing), not usable from Python ❌
+- `gateway-client`, `openclaw-probe`, `test` — connect successfully ✅
+
+### Request format
+```json
+{"type":"req","id":"<uuid>","method":"<method>","params":{...}}
+```
+
+### Response format
+```json
+{"type":"res","id":"<uuid>","ok":true,"payload":{...}}
+{"type":"res","id":"<uuid>","ok":false,"error":{"code":"ERROR_CODE","message":"..."}}
+```
+
+### Streaming events (server-push)
+```json
+{"type":"event","event":"chat","seq":<n>,"payload":{
+  "sessionKey":"agent:main:main","runId":"<uuid>",
+  "state":"delta|final|aborted|error",
+  "message":{...},"errorMessage":"..."
+}}
+```
+
+### Scope limitations
+The static gateway token (`gateway.auth.token`) grants only `operator.admin`, `operator.approvals`, `operator.pairing`. Methods requiring `operator.read` or `operator.write` (including `chat.send`, `agents.list`, `sessions.list`) are blocked. These scopes cannot be elevated by requesting them in the connect params — the server caps them based on the token configuration.
+
+**Workaround:** Use `openclaw agent --json --session-id` subprocess instead of WebSocket RPC.
+
+### Complete RPC method list (100 methods as of v2026.3.13)
+Includes: `chat.send`, `chat.history`, `chat.abort`, `sessions.list`, `sessions.patch`, `sessions.reset`, `sessions.delete`, `agents.list`, `agents.create`, `agents.update`, `agents.delete`, `agent` (single turn), `agent.identity.get`, `health`, `config.get`, `config.set`, `models.list`, `tools.catalog`, `cron.*`, `device.*`, `node.*`, `skills.*`, `update.run`, and more.
+
+---
+
 ## Final Recommendation for Your Setup
 
 When running your Agent Manager / Mission Control:

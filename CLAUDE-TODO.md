@@ -72,7 +72,7 @@ Make installed agents first-class citizens of the OpenClaw universe so they appe
 
 **Remaining work:**
 - [x] [D2] Mission Control "Start Agent" button — add a start button to each agent card on the dashboard that runs that agent's launcher script in a new Terminal window
-- [ ] [D4] Click-to-chat with agent — clicking an agent card in Mission Control opens a chat session with that agent (either via OpenClaw's native chat or an embedded chat panel)
+- [x] [D4] Click-to-chat with agent — clicking an agent card in Mission Control opens a chat session with that agent (either via OpenClaw's native chat or an embedded chat panel)
 
 ---
 
@@ -90,20 +90,18 @@ Remaining agent UX polish. Requires Items 1/5/7 (complete as of v0.3.0) as found
 
 ### v0.4.x — Embedded Agent Chat (chat panel in Mission Control)
 
-Allow chatting with agents directly from the Mission Control dashboard, without needing the OpenClaw native app. Blocked by needing to understand the OpenClaw gateway API shape.
+Allow chatting with agents directly from the Mission Control dashboard, without needing the OpenClaw native app.
 
-**Architecture summary:**
-Mission Control is an external observer at port 8765. The OpenClaw gateway runs at port 18789. To chat from MC, the FastAPI server must proxy messages to the gateway and stream token responses back to the browser. The gateway token is already available in `~/.openclaw/openclaw.json`.
-
-**Reasoning:** Agents created by Mission Control aren't natively chat-routable because they lack routing rules in the OpenClaw gateway. MC could bridge this by proxying to the gateway directly (for authorized users only). Requires reverse-engineering the gateway HTTP API by sniffing OpenClaw Chat traffic.
+**Architecture (as built):**
+Used `openclaw agent --json --session-id` subprocess instead of WebSocket proxying. The gateway WebSocket requires `operator.read`/`operator.write` scopes which the static token does not grant; the `cli` client mode connects but scope checks block chat methods. The subprocess approach sidesteps this entirely and provides full session continuity via `--session-id` from the JSON response.
 
 **Sub-tasks:**
-- [ ] [D2] Reverse-engineer OpenClaw gateway HTTP API — sniff traffic from OpenClaw Chat using browser devtools or mitmproxy; document the message send endpoint and response format
-- [ ] [D3] Gateway proxy endpoint — add `POST /api/chat/send` in server.py that calls the gateway API with the token from openclaw.json and returns the response (non-streaming first)
-- [ ] [D3] SSE streaming — once non-streaming works, upgrade to Server-Sent Events so token responses stream to the browser in real-time
-- [ ] [D3] Session tracking — store session IDs per agent per browser session so conversation history threads correctly; add `DELETE /api/chat/session/{agentId}` to reset
-- [ ] [D2] Chat panel UI — add a collapsible chat panel to each agent card; input box + scrollable message history; wired to `/api/chat/send`
-- [ ] [D2] Gateway health check — add gateway status indicator (running/not running) to the dashboard so users know if chat will work before trying
+- [x] [D2] Reverse-engineer OpenClaw gateway HTTP API — WebSocket RPC protocol reverse-engineered from gateway JS bundle; `openclaw agent --json` is the right integration path (scope constraints block direct WebSocket chat)
+- [x] [D3] Gateway proxy endpoint — `POST /api/chat/send` in server.py; uses `asyncio.create_subprocess_exec` + `openclaw agent --json` with 120s timeout; validates agentId/sessionId to prevent injection
+- [ ] [D3] SSE streaming — `openclaw agent` runs synchronously (no token stream); future: intercept gateway WebSocket events if scope issue is resolved
+- [x] [D3] Session tracking — sessionId stored per-agent in browser JS (`_chatSessions`); `DELETE /api/chat/session/{agentId}` endpoint; "↺ New Chat" button clears session
+- [x] [D2] Chat panel UI — slide-up modal with full message history, typing indicator, Enter-to-send, auto-resize textarea, model tag per response
+- [x] [D2] Gateway health check — gateway status bar (v0.3.3+) already shows running/stopped with green/red indicator
 
 ---
 
@@ -175,3 +173,4 @@ Standalone binaries and polished docs. Production-ready release.
 | 2026-03-16 | v0.3.1 — Bug fix: Agent workspace path registration + broken Start Agent button (launches in Terminal using non-existent openclaw start command) |
 | 2026-03-16 | v0.3.2 — Fix: Remove broken openclaw start; add proper Set as Main feature (PUT /api/agents/set-main/{role}) to promote agents to primary chat entrypoint. Replace Start button with Chat/Verify/Set-as-Main actions. Update launchers to use valid openclaw agent command. |
 | 2026-03-16 | v0.3.3 — Feature: Gateway control bar below header with status indicator (green/red/yellow) and buttons for start/stop/restart/refresh. All gateway lifecycle operations now available from UI. Auto-polls every 5 seconds. Restart banner shows after config changes. |
+| 2026-03-16 | v0.4.0 — Feature: Embedded agent chat panel in Mission Control. POST /api/chat/send uses openclaw agent --json subprocess with session continuity (--session-id). DELETE /api/chat/session/{agentId} to reset. Slide-up chat modal with message history, typing indicator, Enter-to-send, model tag. Reverse-engineered OpenClaw gateway WebSocket protocol (RPC over WS, cli client mode works, operator.read scope blocked by token config). |

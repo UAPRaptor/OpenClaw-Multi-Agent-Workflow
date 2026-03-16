@@ -587,15 +587,144 @@ async function purgeAgent(agentId) {
   }
 }
 
-async function chatWithAgent(role) {
-  try {
-    const res = await fetch('/api/gateway/open-chat', { method: 'POST' });
-    const data = await res.json();
-    if (!data.ok) {
-      alert(`Error: ${data.error}`);
+// ── Agent Chat ─────────────────────────────────────────────────────────────
+
+// Per-agent state: session IDs and message history
+const _chatSessions = {};   // { agentId: sessionId | null }
+const _chatHistory  = {};   // { agentId: [{role, text, model?}] }
+let _chatAgent = null;      // currently open agent
+let _chatBusy  = false;
+
+function chatWithAgent(role) {
+  _chatAgent = role;
+  const a = _agentsData[role] || {};
+  document.getElementById('chatModalTitle').textContent = `${a.character || role}`;
+  _updateChatMeta();
+  _renderChatHistory();
+  document.getElementById('chatModalOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('chatInput').focus(), 100);
+}
+
+function closeChatModal(e) {
+  if (e && e.target !== document.getElementById('chatModalOverlay')) return;
+  document.getElementById('chatModalOverlay').classList.remove('open');
+}
+
+function newChatSession() {
+  if (!_chatAgent) return;
+  _chatSessions[_chatAgent] = null;
+  _chatHistory[_chatAgent] = [];
+  _renderChatHistory();
+  _updateChatMeta();
+  document.getElementById('chatInput').focus();
+}
+
+function _updateChatMeta() {
+  const el = document.getElementById('chatModalMeta');
+  if (!_chatAgent) { el.textContent = ''; return; }
+  const sid = _chatSessions[_chatAgent];
+  el.textContent = sid ? `Session: ${sid.substring(0, 8)}…` : 'New conversation';
+}
+
+function _renderChatHistory() {
+  if (!_chatAgent) return;
+  const msgs = _chatHistory[_chatAgent] || [];
+  const container = document.getElementById('chatMessages');
+  const empty = document.getElementById('chatEmpty');
+
+  if (!msgs.length) {
+    empty.style.display = '';
+    container.querySelectorAll('.chat-msg,.chat-model-tag').forEach(el => el.remove());
+    return;
+  }
+
+  empty.style.display = 'none';
+  container.querySelectorAll('.chat-msg,.chat-model-tag').forEach(el => el.remove());
+
+  for (const msg of msgs) {
+    const div = document.createElement('div');
+    div.className = `chat-msg chat-msg-${msg.role}`;
+    div.textContent = msg.text;
+    container.appendChild(div);
+    if (msg.role === 'assistant' && msg.model) {
+      const tag = document.createElement('div');
+      tag.className = 'chat-model-tag';
+      tag.textContent = msg.model;
+      container.appendChild(tag);
     }
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+function chatInputKeydown(e) {
+  // Send on Enter (not Shift+Enter)
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+}
+
+function chatInputResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+async function sendChatMessage() {
+  if (_chatBusy || !_chatAgent) return;
+  const input = document.getElementById('chatInput');
+  const message = input.value.trim();
+  if (!message) return;
+
+  input.value = '';
+  input.style.height = '38px';
+  _chatBusy = true;
+  document.getElementById('chatSendBtn').disabled = true;
+
+  // Add user message to history
+  if (!_chatHistory[_chatAgent]) _chatHistory[_chatAgent] = [];
+  _chatHistory[_chatAgent].push({ role: 'user', text: message });
+  _renderChatHistory();
+
+  // Show typing indicator
+  const container = document.getElementById('chatMessages');
+  const typing = document.createElement('div');
+  typing.className = 'chat-typing';
+  typing.id = 'chatTyping';
+  typing.textContent = '···';
+  container.appendChild(typing);
+  container.scrollTop = container.scrollHeight;
+
+  try {
+    const res = await fetch('/api/chat/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: _chatAgent,
+        message,
+        sessionId: _chatSessions[_chatAgent] || null,
+      }),
+    });
+    const data = await res.json();
+
+    // Remove typing indicator
+    document.getElementById('chatTyping')?.remove();
+
+    if (data.ok) {
+      _chatSessions[_chatAgent] = data.sessionId;
+      _chatHistory[_chatAgent].push({ role: 'assistant', text: data.response, model: data.model });
+      _updateChatMeta();
+    } else {
+      _chatHistory[_chatAgent].push({ role: 'error', text: `Error: ${data.error || 'Unknown error'}` });
+    }
+    _renderChatHistory();
   } catch (e) {
-    alert(`Error: ${e.message}`);
+    document.getElementById('chatTyping')?.remove();
+    _chatHistory[_chatAgent].push({ role: 'error', text: `Network error: ${e.message}` });
+    _renderChatHistory();
+  } finally {
+    _chatBusy = false;
+    document.getElementById('chatSendBtn').disabled = false;
+    input.focus();
   }
 }
 

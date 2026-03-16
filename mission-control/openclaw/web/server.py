@@ -1176,6 +1176,89 @@ async def open_chat() -> JSONResponse:
         }, status_code=500)
 
 
+@app.post("/api/chat/send")
+async def chat_send(request: Request) -> JSONResponse:
+    """
+    Sends a message to an agent and returns the response.
+    Uses 'openclaw agent --json' subprocess for single-turn execution with session continuity.
+
+    Body: {agentId, message, sessionId?}
+    Returns: {ok, response, sessionId, model, runId}
+    """
+    body = await request.json()
+    agent_id = str(body.get("agentId", "main")).strip()
+    message = str(body.get("message", "")).strip()
+    session_id = body.get("sessionId")  # None = new conversation
+
+    if not message:
+        return JSONResponse({"ok": False, "error": "Message is required"}, status_code=400)
+
+    # Validate agentId to prevent injection
+    import re as _re
+    if not _re.match(r'^[a-zA-Z0-9_-]{1,64}$', agent_id):
+        return JSONResponse({"ok": False, "error": "Invalid agentId"}, status_code=400)
+
+    cmd = ["openclaw", "agent", "--agent", agent_id, "--message", message, "--json"]
+    if session_id and _re.match(r'^[a-zA-Z0-9_-]{1,128}$', str(session_id)):
+        cmd += ["--session-id", str(session_id)]
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return JSONResponse({"ok": False, "error": "Agent timed out after 120 seconds"}, status_code=408)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"Failed to run agent: {str(e)}"}, status_code=500)
+
+    if proc.returncode != 0:
+        return JSONResponse({
+            "ok": False,
+            "error": stderr.decode(errors="replace").strip() or "Agent command failed",
+        }, status_code=500)
+
+    try:
+        data = json.loads(stdout.decode(errors="replace"))
+        payloads = data.get("result", {}).get("payloads", [])
+        response_text = payloads[0].get("text", "") if payloads else ""
+        meta = data.get("result", {}).get("meta", {}).get("agentMeta", {})
+        new_session_id = meta.get("sessionId")
+        model = meta.get("model", "")
+        return JSONResponse({
+            "ok": True,
+            "response": response_text,
+            "sessionId": new_session_id,
+            "model": model,
+            "runId": data.get("runId"),
+        })
+    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        return JSONResponse({
+            "ok": False,
+            "error": f"Failed to parse agent response: {str(e)}",
+            "raw": stdout.decode(errors="replace")[:500],
+        }, status_code=500)
+
+
+@app.delete("/api/chat/session/{agent_id}")
+async def clear_chat_session(agent_id: str) -> JSONResponse:
+    """
+    Clears the session state for an agent (instructs the browser to start fresh).
+    The actual session in the gateway is not deleted — just the ID pointer.
+    Returns: {ok, agentId}
+    """
+    import re as _re
+    if not _re.match(r'^[a-zA-Z0-9_-]{1,64}$', agent_id):
+        return JSONResponse({"ok": False, "error": "Invalid agentId"}, status_code=400)
+    return JSONResponse({"ok": True, "agentId": agent_id})
+
+
 @app.get("/api/agents/main")
 async def get_main_agent() -> JSONResponse:
     """

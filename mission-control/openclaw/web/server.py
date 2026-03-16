@@ -931,9 +931,14 @@ async def get_gateway_status() -> JSONResponse:
         # Determine state based on message content, not return code
         # (status command returns 0 regardless of whether gateway is running or stopped)
         state = "unknown"
-        if "running" in output_text or "active" in output_text:
+
+        # Check for running indicators
+        if "running" in output_text or "active" in output_text or "launchagent (loaded)" in output_text:
             state = "running"
-        elif "not running" in output_text or "stopped" in output_text or "inactive" in output_text:
+        # Check for stopped indicators
+        elif ("not running" in output_text or "stopped" in output_text or "inactive" in output_text or
+              "not loaded" in output_text or "rpc probe: failed" in output_text or
+              "service not installed" in output_text):
             state = "stopped"
         elif result.returncode != 0:
             state = "error"

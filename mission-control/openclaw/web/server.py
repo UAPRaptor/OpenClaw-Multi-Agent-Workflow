@@ -5,6 +5,7 @@ Serves the installer wizard, monitor dashboard, REST API, and WebSocket.
 """
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -974,25 +975,36 @@ async def get_gateway_status() -> JSONResponse:
 async def start_gateway() -> JSONResponse:
     """
     Starts the OpenClaw gateway.
+    Uses 'openclaw gateway install' to ensure service is installed, then starts it.
     Returns: {ok, state: "running|error|unknown", message, stdout, stderr}
     """
     import subprocess
 
     try:
-        result = subprocess.run(
-            ["openclaw", "gateway", "start"],
+        # First try to install the gateway service (idempotent)
+        subprocess.run(
+            ["openclaw", "gateway", "install"],
             capture_output=True,
             text=True,
             timeout=5,
         )
-        # Check if it started successfully by doing a quick status check
+        # Now start it via launchctl
+        result = subprocess.run(
+            ["launchctl", "bootstrap", f"gui/{os.getuid()}",
+             f"{os.path.expanduser('~/Library/LaunchAgents/ai.openclaw.gateway.plist')}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        # Give it a moment to start, then check status
+        await asyncio.sleep(1.5)
         status_check = subprocess.run(
             ["openclaw", "gateway", "status"],
             capture_output=True,
             text=True,
             timeout=2,
         )
-        state = "running" if status_check.returncode == 0 else "error"
+        state = "running" if "running" in status_check.stdout.lower() else "error"
 
         return JSONResponse({
             "ok": state == "running",
@@ -1023,21 +1035,32 @@ async def start_gateway() -> JSONResponse:
 async def stop_gateway() -> JSONResponse:
     """
     Stops the OpenClaw gateway.
+    Uses launchctl bootout to stop the service.
     Returns: {ok, state: "stopped|error|unknown", message, stdout, stderr}
     """
     import subprocess
 
     try:
+        # Use launchctl bootout to stop the service
         result = subprocess.run(
-            ["openclaw", "gateway", "stop"],
+            ["launchctl", "bootout", f"gui/{os.getuid()}",
+             f"{os.path.expanduser('~/Library/LaunchAgents/ai.openclaw.gateway.plist')}"],
             capture_output=True,
             text=True,
             timeout=5,
         )
-        state = "stopped" if result.returncode == 0 else "error"
+        # Check if it stopped
+        await asyncio.sleep(1)
+        status_check = subprocess.run(
+            ["openclaw", "gateway", "status"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        state = "stopped" if "not loaded" in status_check.stdout.lower() or "rpc probe: failed" in status_check.stderr.lower() else "error"
 
         return JSONResponse({
-            "ok": result.returncode == 0,
+            "ok": state == "stopped",
             "state": state,
             "message": "Gateway stopped successfully" if state == "stopped" else "Error stopping gateway",
             "stdout": result.stdout.strip(),
@@ -1065,17 +1088,39 @@ async def stop_gateway() -> JSONResponse:
 async def restart_gateway() -> JSONResponse:
     """
     Restarts the OpenClaw gateway.
+    Stops then starts the gateway service.
     Returns: {ok, state: "running|error|unknown", message, stdout, stderr}
     """
     import subprocess
 
     try:
-        result = subprocess.run(
-            ["openclaw", "gateway", "restart"],
+        # Stop the gateway first
+        subprocess.run(
+            ["launchctl", "bootout", f"gui/{os.getuid()}",
+             f"{os.path.expanduser('~/Library/LaunchAgents/ai.openclaw.gateway.plist')}"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=5,
         )
+        await asyncio.sleep(1)
+
+        # Install and start the gateway
+        subprocess.run(
+            ["openclaw", "gateway", "install"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        result = subprocess.run(
+            ["launchctl", "bootstrap", f"gui/{os.getuid()}",
+             f"{os.path.expanduser('~/Library/LaunchAgents/ai.openclaw.gateway.plist')}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        # Give it time to start
+        await asyncio.sleep(1.5)
+
         # Verify it restarted successfully
         status_check = subprocess.run(
             ["openclaw", "gateway", "status"],
@@ -1083,7 +1128,7 @@ async def restart_gateway() -> JSONResponse:
             text=True,
             timeout=2,
         )
-        state = "running" if status_check.returncode == 0 else "error"
+        state = "running" if "running" in status_check.stdout.lower() else "error"
 
         return JSONResponse({
             "ok": state == "running",

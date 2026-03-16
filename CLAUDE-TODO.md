@@ -63,9 +63,9 @@ Make installed agents first-class citizens of the OpenClaw universe so they appe
 **Problem:** The installer creates workspace files (AGENTS.md, SOUL.md, run scripts) but never registers agents with OpenClaw's own agent directory system at `~/.openclaw/agents/`. Agents are invisible to OpenClaw's native UI and chat interface. Additionally, no explicit `agentId`/`displayName` fields, no cleanup path for orphaned agents, no visibility into which agents are managed vs runtime vs test.
 
 **Completed work:**
-- [x] [D3] Create OpenClaw agent directories — for each installed role, create `~/.openclaw/agents/{role}/` with `IDENTITY.md` (character persona, role, philosophy) — loaded by `openclaw start --agent {role}`
+- [x] [D3] Create OpenClaw agent directories — for each installed role, create `~/.openclaw/agents/{role}/` with `IDENTITY.md` (character persona, role, philosophy) — invoked via `openclaw agent --agent {role} --message "..."`
 - [x] [D3] Register agents at install time — `agent_registrar.py` renders `IDENTITY.md.template` per role and writes to `~/.openclaw/agents/{role}/IDENTITY.md`
-- [x] [D3] Launch scripts per agent — per-role launchers run `openclaw start --agent {role} --model {model}` from workspace root; also added missing `HEARTBEAT.md` to workspace
+- [x] [D3] Launch scripts per agent — per-role launchers run `openclaw agent --agent {role} --message "..."` from workspace root; also added missing `HEARTBEAT.md` to workspace
 - [x] [D2] Agent identity model (Item 1) — explicit `agentId` and `displayName` fields throughout; centralized `ROLE_LABELS` dict (single import in `template_deployer.py`); removed 4 duplicate definitions
 - [x] [D2] Agent cleanup tools (Item 5) — `unregister_agent()`, `archive_agent()`, `purge_agent()`, `sync_existing_agents_to_config()` functions; `POST /api/agents/cleanup` endpoint; Agent Cleanup UI card with action buttons
 - [x] [D3] Agent reconciliation (Item 7) — `agent_reconciler.py` classifies agents as managed/runtime/test/orphaned/unmanaged/missing; `GET /api/agent-registry` endpoint; displayName markdown-strip fix
@@ -167,7 +167,7 @@ Standalone binaries and polished docs. Production-ready release.
 | 2026-03-14 | Agent handoff coordination: HANDOFF.md.template (per-project kickoff queue), ROLE_CHAIN + ROLE_START_CONDITIONS in template_deployer.py, AGENTS.md/SOUL.md/MEMORY.md templates updated with handoff protocol, three install modes (new/upgrade/replace), /api/check-workspace-path, installer Step 3 upgrade UI (debounceCheckPath, checkPath, selectInstallMode, confirmLocation), install_mode wired through server.py + installer.js |
 | 2026-03-14 | Version auto-increment added to package.bat and package.sh (patch/minor/major/keep prompt); CLAUDE-TODO.md restructured into version milestones (v0.2.0 → v1.0.0) |
 | 2026-03-14 | v0.2.0 — Agent registration first attempt (wrong — used CLAUDE.md naming, reverted in v0.2.1) |
-| 2026-03-15 | v0.2.1 — Correct OpenClaw agent registration: IDENTITY.md.template in corpus/agents/ deployed to ~/.openclaw/agents/{role}/IDENTITY.md; HEARTBEAT.md added to workspace; launchers use openclaw start --agent {role} --model {model}; all CLAUDE.md workspace files removed |
+| 2026-03-15 | v0.2.1 — Correct OpenClaw agent registration: IDENTITY.md.template in corpus/agents/ deployed to ~/.openclaw/agents/{role}/IDENTITY.md; HEARTBEAT.md added to workspace; launchers use openclaw agent --agent {role} --message "..."; all CLAUDE.md workspace files removed |
 | 2026-03-16 | v0.3.0 — Agent identity model (Item 1): explicit agentId + displayName fields throughout; centralized ROLE_LABELS to single import in template_deployer.py; removed 4 duplicate definitions |
 | 2026-03-16 | v0.3.0 — Agent cleanup tools (Item 5): unregister_agent(), archive_agent(), purge_agent(), sync_existing_agents_to_config(); POST /api/agents/cleanup endpoint; Agent Cleanup & Orphan Management UI card |
 | 2026-03-16 | v0.3.0 — Agent reconciliation (Item 7): agent_reconciler.py classifies agents as managed/runtime/test/orphaned/unmanaged/missing; GET /api/agent-registry endpoint; displayName markdown-strip fix |

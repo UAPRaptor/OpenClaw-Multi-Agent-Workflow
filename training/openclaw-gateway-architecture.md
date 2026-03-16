@@ -132,31 +132,25 @@ The gateway remains the runtime execution engine.
 
 OpenClaw provides CLI commands that interact with the gateway.
 
-### Start the gateway
+### Start/Stop/Restart the gateway
 
-```
-openclaw gateway start
-```
+**Note:** `openclaw gateway start/stop/restart` subcommands do not exist. Gateway lifecycle on macOS is managed via `launchctl`:
 
-or
+```bash
+# Install service (idempotent)
+openclaw gateway install
 
-```
-openclaw start
-```
+# Start via launchctl
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/ai.openclaw.gateway.plist
 
-(depending on installation)
+# Stop via launchctl
+launchctl bootout gui/$UID ~/Library/LaunchAgents/ai.openclaw.gateway.plist
 
-### Stop the gateway
-
-```
-openclaw gateway stop
+# Check status
+openclaw gateway status
 ```
 
-### Restart gateway
-
-```
-openclaw gateway restart
-```
+For UI-based gateway control, use **OpenClaw Mission Control** dashboard (v0.3.3+) which provides Start/Stop/Restart buttons.
 
 ### List agents
 
@@ -164,13 +158,13 @@ openclaw gateway restart
 openclaw agents list
 ```
 
-### Add an agent
+### Manage agents
 
 ```
-openclaw agents add <agentId>
+openclaw agent --agent <role> --message "<message>"
 ```
 
-This registers a new agent with the gateway.
+Runs a single agent turn.
 
 ### Spawn a session
 

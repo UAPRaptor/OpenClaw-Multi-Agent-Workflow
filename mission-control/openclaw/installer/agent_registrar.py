@@ -6,8 +6,8 @@ OpenClaw agent directory layout:
   ~/.openclaw/agents/{role}/
     IDENTITY.md     — who this agent is (character, role, philosophy)
 
-OpenClaw loads this file when the launcher runs:
-  openclaw start --agent {role} --model {model}
+Agents are invoked via:
+  openclaw agent --agent {role} --message "..."
 """
 from datetime import date, datetime, timezone
 from pathlib import Path

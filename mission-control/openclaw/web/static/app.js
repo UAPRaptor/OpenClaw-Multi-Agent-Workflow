@@ -107,7 +107,6 @@ function renderAgents(agents) {
     <div class="agent-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
         <button class="agent-cog" onclick="showAgentDetails('${escHtml(a.role || '')}')" title="Agent details">⚙</button>
-        <button class="agent-start-btn" onclick="startAgent('${escHtml(a.role || '')}')" title="Launch agent in Terminal">▶ Start</button>
       </div>
       <div class="agent-card-role">${escHtml(a.role || '')}</div>
       <div class="agent-card-char">${escHtml(a.character || '—')}</div>
@@ -116,6 +115,11 @@ function renderAgents(agents) {
         <span>${statusLabel(a.status)}</span>
       </div>
       ${a.last_active ? `<div class="agent-card-time">${timeAgo(a.last_active)}</div>` : ''}
+      <div class="agent-card-actions">
+        <button class="agent-action-btn" onclick="chatWithAgent('${escHtml(a.role || '')}')" title="Open chat">💬</button>
+        <button class="agent-action-btn" onclick="verifyAgent('${escHtml(a.role || '')}')" title="Verify responsive">✓</button>
+        <button class="agent-action-btn" onclick="setAsMain('${escHtml(a.role || '')}')" title="Set as primary chat agent">★</button>
+      </div>
     </div>
   `).join('');
 }
@@ -472,31 +476,79 @@ async function purgeAgent(agentId) {
   }
 }
 
-async function startAgent(role) {
+async function chatWithAgent(role) {
+  try {
+    const res = await fetch('/api/gateway/open-chat', { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok) {
+      alert(`Error: ${data.error}`);
+    }
+  } catch (e) {
+    alert(`Error: ${e.message}`);
+  }
+}
+
+async function verifyAgent(role) {
   try {
     const btn = event.target;
     const originalText = btn.textContent;
-    btn.textContent = '⏳ Starting...';
+    btn.textContent = '⏳';
     btn.disabled = true;
 
-    const res = await fetch(`/api/agents/start/${role}`, { method: 'POST' });
+    const res = await fetch(`/api/agents/verify/${role}`, { method: 'POST' });
     const data = await res.json();
 
     if (data.ok) {
-      btn.textContent = '✓ Started';
+      btn.title = `Response: ${data.response.substring(0, 60)}...`;
+      btn.textContent = '✓';
       setTimeout(() => {
         btn.textContent = originalText;
         btn.disabled = false;
+        btn.title = 'Verify responsive';
       }, 3000);
     } else {
-      alert(`Failed to start ${role}: ${data.error}`);
+      btn.title = `Error: ${data.error}`;
+      btn.textContent = '✗';
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.disabled = false;
+        btn.title = 'Verify responsive';
+      }, 3000);
+    }
+  } catch (e) {
+    alert(`Error: ${e.message}`);
+    const btn = event.target;
+    btn.textContent = '✓';
+    btn.disabled = false;
+  }
+}
+
+async function setAsMain(role) {
+  try {
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.textContent = '⏳';
+    btn.disabled = true;
+
+    const res = await fetch(`/api/agents/set-main/${role}`, { method: 'PUT' });
+    const data = await res.json();
+
+    if (data.ok) {
+      btn.textContent = '★';
+      alert(`${role} is now the primary chat agent!\n\nNote: The gateway may need a restart for changes to take full effect.`);
+      // Reload agent registry to show updated state
+      setTimeout(() => {
+        loadAgentRegistry();
+      }, 1000);
+    } else {
+      alert(`Failed to promote ${role}: ${data.error}`);
       btn.textContent = originalText;
       btn.disabled = false;
     }
   } catch (e) {
     alert(`Error: ${e.message}`);
     const btn = event.target;
-    btn.textContent = '▶ Start';
+    btn.textContent = '★';
     btn.disabled = false;
   }
 }

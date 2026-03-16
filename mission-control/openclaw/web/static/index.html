@@ -38,13 +38,16 @@
       transition: opacity 0.15s;
     }
     .agent-cog:hover { opacity: 1; color: var(--text); }
-    .agent-start-btn {
-      background: none; border: 1px solid var(--border); cursor: pointer;
-      color: var(--accent); font-size: 11px; font-weight: 500; padding: 4px 8px;
-      border-radius: 3px; line-height: 1; transition: all 0.15s;
+    .agent-card-actions {
+      display: flex; gap: 4px; margin-top: 8px; justify-content: center;
     }
-    .agent-start-btn:hover { border-color: var(--accent); background: rgba(88,166,255,0.08); }
-    .agent-start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .agent-action-btn {
+      background: none; border: 1px solid var(--border); cursor: pointer;
+      color: var(--accent); font-size: 13px; padding: 4px 6px;
+      border-radius: 3px; line-height: 1; flex: 1; transition: all 0.15s;
+    }
+    .agent-action-btn:hover { border-color: var(--accent); background: rgba(88,166,255,0.08); }
+    .agent-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
     /* Agent details modal */
     .agent-modal-overlay {

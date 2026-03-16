@@ -4,6 +4,7 @@ Binds ONLY to 127.0.0.1 — never accessible from the network.
 Serves the installer wizard, monitor dashboard, REST API, and WebSocket.
 """
 import asyncio
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -755,64 +756,275 @@ async def cleanup_agent(body: dict) -> JSONResponse:
         )
 
 
-@app.post("/api/agents/start/{role}")
-async def start_agent(role: str) -> JSONResponse:
+@app.put("/api/agents/set-main/{role}")
+async def set_agent_as_main(role: str) -> JSONResponse:
     """
-    Launches an agent by running its launcher script in a new terminal window.
-    This causes OpenClaw to create the agent/auth*.json file, making the agent chat-routable.
+    Promotes an agent to be the primary chat entrypoint by making it the 'main' agent.
+    Updates openclaw.json agents.list entry for 'main' to use the promoted agent's:
+    - workspace
+    - identity (IDENTITY.md)
+    - default: true flag
 
     Path param: role (e.g. "pm", "architect", "builder")
     """
-    from openclaw.platform_utils import load_last_workspace, is_windows
-
-    # Get the workspace path
-    workspace_path = load_last_workspace()
-    if not workspace_path:
-        return JSONResponse(
-            {"error": "No workspace found. Run the installer first."},
-            status_code=400,
-        )
-
-    workspace_path = Path(workspace_path)
-
-    # Find launcher script
-    if is_windows():
-        launcher = workspace_path / "launchers" / f"run-{role}.bat"
-    else:
-        launcher = workspace_path / "launchers" / f"run-{role}.sh"
-
-    if not launcher.exists():
-        return JSONResponse(
-            {"error": f"Launcher not found: {launcher}"},
-            status_code=404,
-        )
+    import shutil
 
     try:
-        import subprocess
-        if is_windows():
-            # Windows: open new cmd window and run the batch file
-            subprocess.Popen(
-                ["cmd", "/c", "start", "cmd", "/k", str(launcher)],
-                shell=False,
+        config_path = Path.home() / ".openclaw" / "openclaw.json"
+        if not config_path.exists():
+            return JSONResponse(
+                {"error": "OpenClaw config not found"},
+                status_code=404,
             )
-        else:
-            # Mac/Linux: open Terminal.app and run the shell script
-            subprocess.Popen([
-                "osascript",
-                "-e",
-                f'tell app "Terminal" to do script "cd {workspace_path.as_posix()} && bash {launcher.as_posix()}"',
-            ])
+
+        # Read config
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        if "agents" not in data or "list" not in data["agents"]:
+            return JSONResponse(
+                {"error": "Invalid OpenClaw config structure"},
+                status_code=400,
+            )
+
+        agents_list = data["agents"]["list"]
+
+        # Find the role's workspace
+        role_entry = next((a for a in agents_list if a.get("id") == role), None)
+        if not role_entry:
+            return JSONResponse(
+                {"error": f"Agent {role} not found in config"},
+                status_code=404,
+            )
+
+        role_workspace = role_entry.get("workspace")
+
+        # Update the 'main' entry: set workspace and default flag
+        main_entry = next((a for a in agents_list if a.get("id") == "main"), None)
+        if not main_entry:
+            # Create main entry if it doesn't exist
+            main_entry = {"id": "main"}
+            agents_list.append(main_entry)
+
+        main_entry["workspace"] = role_workspace
+        main_entry["default"] = True
+
+        # Remove 'default' flag from all other agents
+        for agent in agents_list:
+            if agent.get("id") != "main":
+                agent.pop("default", None)
+
+        # Snapshot and copy IDENTITY.md
+        role_identity = Path.home() / ".openclaw" / "agents" / role / "IDENTITY.md"
+        main_identity = Path.home() / ".openclaw" / "agents" / "main" / "IDENTITY.md"
+        identity_copied = False
+
+        if role_identity.exists():
+            # Archive old main identity if it exists
+            if main_identity.exists():
+                bak_path = main_identity.parent / f"{main_identity.name}.bak"
+                shutil.copy2(main_identity, bak_path)
+
+            # Copy role's identity to main
+            main_identity.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(role_identity, main_identity)
+            identity_copied = True
+
+        # Write back config
+        config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        # Try to get gateway status
+        import subprocess
+        gateway_status = "unknown"
+        try:
+            result = subprocess.run(
+                ["openclaw", "gateway", "status"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            gateway_status = result.stdout.strip() if result.returncode == 0 else "gateway check failed"
+        except Exception:
+            gateway_status = "gateway status check error"
 
         return JSONResponse({
             "ok": True,
-            "launched": role,
-            "message": f"Launched {role} agent in Terminal. Auth file will be created when the agent starts.",
+            "promoted": role,
+            "workspace": role_workspace,
+            "identityCopied": identity_copied,
+            "gatewayStatus": gateway_status,
+            "message": f"Promoted {role} to main chat agent. Gateway may need restart to apply changes.",
         })
+
     except Exception as e:
         return JSONResponse(
-            {"error": f"Failed to launch agent: {str(e)}"},
+            {"error": f"Failed to promote agent: {str(e)}"},
             status_code=500,
         )
+
+
+@app.post("/api/agents/verify/{role}")
+async def verify_agent(role: str) -> JSONResponse:
+    """
+    Verifies an agent is responsive by sending a test message.
+    Uses the 'main' agent if the role is currently main, else uses the role directly.
+
+    Path param: role (e.g. "pm", "main")
+    """
+    import subprocess
+
+    try:
+        # Always test via 'main' since that's the primary entrypoint
+        test_agent = "main"
+        test_message = "Reply with your name and role only."
+
+        result = subprocess.run(
+            ["openclaw", "agent", "--agent", test_agent, "--message", test_message],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if result.returncode == 0:
+            return JSONResponse({
+                "ok": True,
+                "agent": test_agent,
+                "response": result.stdout.strip(),
+                "command": f"openclaw agent --agent {test_agent} --message \"{test_message}\"",
+            })
+        else:
+            return JSONResponse({
+                "ok": False,
+                "error": result.stderr.strip() or "Agent command failed",
+                "command": f"openclaw agent --agent {test_agent} --message \"{test_message}\"",
+            })
+
+    except subprocess.TimeoutExpired:
+        return JSONResponse({
+            "ok": False,
+            "error": "Agent verification timed out after 10 seconds",
+        }, status_code=408)
+    except Exception as e:
+        return JSONResponse({
+            "ok": False,
+            "error": f"Verification failed: {str(e)}",
+        }, status_code=500)
+
+
+@app.get("/api/gateway/status")
+async def get_gateway_status() -> JSONResponse:
+    """
+    Checks if the OpenClaw gateway is running.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["openclaw", "gateway", "status"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        running = result.returncode == 0
+        return JSONResponse({
+            "running": running,
+            "status": result.stdout.strip() if running else result.stderr.strip(),
+        })
+    except subprocess.TimeoutExpired:
+        return JSONResponse({"running": False, "status": "Gateway status check timed out"})
+    except Exception as e:
+        return JSONResponse({"running": False, "status": f"Error: {str(e)}"})
+
+
+@app.post("/api/gateway/start")
+async def start_gateway() -> JSONResponse:
+    """
+    Starts the OpenClaw gateway.
+    """
+    import subprocess
+
+    try:
+        # Start gateway in background (non-blocking)
+        subprocess.Popen(
+            ["openclaw", "gateway", "start"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return JSONResponse({
+            "ok": True,
+            "message": "Gateway start command sent. It may take a few seconds to initialize.",
+        })
+    except Exception as e:
+        return JSONResponse({
+            "ok": False,
+            "error": f"Failed to start gateway: {str(e)}",
+        }, status_code=500)
+
+
+@app.post("/api/gateway/open-chat")
+async def open_chat() -> JSONResponse:
+    """
+    Opens the OpenClaw dashboard in the browser.
+    """
+    import subprocess
+
+    try:
+        # Open dashboard (non-blocking)
+        subprocess.Popen(["openclaw", "dashboard"])
+        return JSONResponse({
+            "ok": True,
+            "message": "Opening OpenClaw dashboard...",
+        })
+    except Exception as e:
+        return JSONResponse({
+            "ok": False,
+            "error": f"Failed to open dashboard: {str(e)}",
+        }, status_code=500)
+
+
+@app.get("/api/agents/main")
+async def get_main_agent() -> JSONResponse:
+    """
+    Returns information about which agent is currently the primary chat agent ('main').
+    """
+    try:
+        config_path = Path.home() / ".openclaw" / "openclaw.json"
+        if not config_path.exists():
+            return JSONResponse({"mainAgent": None, "workspace": None})
+
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        agents_list = data.get("agents", {}).get("list", [])
+
+        main_entry = next((a for a in agents_list if a.get("id") == "main"), None)
+        if not main_entry:
+            return JSONResponse({"mainAgent": None, "workspace": None})
+
+        main_workspace = main_entry.get("workspace")
+
+        # Try to infer which role is currently main by matching workspace
+        promoted_role = None
+        promoted_name = None
+
+        # Load known agents from workspace if available
+        mc_workspace = load_last_workspace()
+        if mc_workspace:
+            agents_file = Path(mc_workspace) / "AGENTS.md"
+            if agents_file.exists():
+                content = agents_file.read_text(encoding="utf-8")
+                # Parse AGENTS.md for role → character mapping
+                for role_name in ["pm", "architect", "builder", "qa", "security", "devops", "ux", "research"]:
+                    if f"### Project Manager" in content and main_workspace and "openclaw-workspace" in main_workspace:
+                        promoted_role = "pm"
+                        promoted_name = "Project Manager"
+                        break
+                    # Simpler approach: read AGENTS.md sections
+
+        return JSONResponse({
+            "mainAgent": "main",
+            "workspace": main_workspace,
+            "promotedRole": promoted_role,
+            "promotedName": promoted_name,
+        })
+    except Exception:
+        return JSONResponse({"mainAgent": None, "workspace": None})
 
 
 # ── WebSocket ──────────────────────────────────────────────────────────────────

@@ -913,6 +913,7 @@ async def verify_agent(role: str) -> JSONResponse:
 async def get_gateway_status() -> JSONResponse:
     """
     Checks if the OpenClaw gateway is running.
+    Returns: {ok, state: "running|stopped|error|unreachable", message, stdout, stderr}
     """
     import subprocess
 
@@ -923,39 +924,175 @@ async def get_gateway_status() -> JSONResponse:
             text=True,
             timeout=3,
         )
-        running = result.returncode == 0
+        if result.returncode == 0:
+            state = "running"
+        elif "not running" in result.stderr.lower() or "stopped" in result.stderr.lower():
+            state = "stopped"
+        else:
+            state = "error"
+
         return JSONResponse({
-            "running": running,
-            "status": result.stdout.strip() if running else result.stderr.strip(),
+            "ok": result.returncode == 0,
+            "state": state,
+            "message": result.stdout.strip() or result.stderr.strip() or f"Gateway is {state}",
+            "stdout": result.stdout.strip(),
+            "stderr": result.stderr.strip(),
         })
     except subprocess.TimeoutExpired:
-        return JSONResponse({"running": False, "status": "Gateway status check timed out"})
+        return JSONResponse({
+            "ok": False,
+            "state": "unreachable",
+            "message": "Gateway status check timed out",
+            "stdout": "",
+            "stderr": "timeout",
+        })
     except Exception as e:
-        return JSONResponse({"running": False, "status": f"Error: {str(e)}"})
+        return JSONResponse({
+            "ok": False,
+            "state": "unreachable",
+            "message": f"Error checking gateway: {str(e)}",
+            "stdout": "",
+            "stderr": str(e),
+        })
 
 
 @app.post("/api/gateway/start")
 async def start_gateway() -> JSONResponse:
     """
     Starts the OpenClaw gateway.
+    Returns: {ok, state: "running|error|unknown", message, stdout, stderr}
     """
     import subprocess
 
     try:
-        # Start gateway in background (non-blocking)
-        subprocess.Popen(
+        result = subprocess.run(
             ["openclaw", "gateway", "start"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
+        # Check if it started successfully by doing a quick status check
+        status_check = subprocess.run(
+            ["openclaw", "gateway", "status"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        state = "running" if status_check.returncode == 0 else "error"
+
         return JSONResponse({
-            "ok": True,
-            "message": "Gateway start command sent. It may take a few seconds to initialize.",
+            "ok": state == "running",
+            "state": state,
+            "message": "Gateway started successfully" if state == "running" else "Gateway start initiated; checking status...",
+            "stdout": result.stdout.strip(),
+            "stderr": result.stderr.strip(),
+        })
+    except subprocess.TimeoutExpired:
+        return JSONResponse({
+            "ok": False,
+            "state": "error",
+            "message": "Gateway start command timed out",
+            "stdout": "",
+            "stderr": "timeout",
         })
     except Exception as e:
         return JSONResponse({
             "ok": False,
-            "error": f"Failed to start gateway: {str(e)}",
+            "state": "error",
+            "message": f"Failed to start gateway: {str(e)}",
+            "stdout": "",
+            "stderr": str(e),
+        }, status_code=500)
+
+
+@app.post("/api/gateway/stop")
+async def stop_gateway() -> JSONResponse:
+    """
+    Stops the OpenClaw gateway.
+    Returns: {ok, state: "stopped|error|unknown", message, stdout, stderr}
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["openclaw", "gateway", "stop"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        state = "stopped" if result.returncode == 0 else "error"
+
+        return JSONResponse({
+            "ok": result.returncode == 0,
+            "state": state,
+            "message": "Gateway stopped successfully" if state == "stopped" else "Error stopping gateway",
+            "stdout": result.stdout.strip(),
+            "stderr": result.stderr.strip(),
+        })
+    except subprocess.TimeoutExpired:
+        return JSONResponse({
+            "ok": False,
+            "state": "error",
+            "message": "Gateway stop command timed out",
+            "stdout": "",
+            "stderr": "timeout",
+        })
+    except Exception as e:
+        return JSONResponse({
+            "ok": False,
+            "state": "error",
+            "message": f"Failed to stop gateway: {str(e)}",
+            "stdout": "",
+            "stderr": str(e),
+        }, status_code=500)
+
+
+@app.post("/api/gateway/restart")
+async def restart_gateway() -> JSONResponse:
+    """
+    Restarts the OpenClaw gateway.
+    Returns: {ok, state: "running|error|unknown", message, stdout, stderr}
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["openclaw", "gateway", "restart"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        # Verify it restarted successfully
+        status_check = subprocess.run(
+            ["openclaw", "gateway", "status"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        state = "running" if status_check.returncode == 0 else "error"
+
+        return JSONResponse({
+            "ok": state == "running",
+            "state": state,
+            "message": "Gateway restarted successfully" if state == "running" else "Gateway restart completed; checking status...",
+            "stdout": result.stdout.strip(),
+            "stderr": result.stderr.strip(),
+        })
+    except subprocess.TimeoutExpired:
+        return JSONResponse({
+            "ok": False,
+            "state": "error",
+            "message": "Gateway restart command timed out",
+            "stdout": "",
+            "stderr": "timeout",
+        })
+    except Exception as e:
+        return JSONResponse({
+            "ok": False,
+            "state": "error",
+            "message": f"Failed to restart gateway: {str(e)}",
+            "stdout": "",
+            "stderr": str(e),
         }, status_code=500)
 
 

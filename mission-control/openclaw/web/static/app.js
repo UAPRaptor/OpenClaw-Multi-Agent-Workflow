@@ -5,6 +5,11 @@ let reconnectTimer = null;
 let pingInterval = null;
 let lastState = null;
 
+// Gateway control state
+let _gwState = 'unknown';
+let _gwBusy = false;
+let _gwPollTimer = null;
+
 // ── WebSocket connection ───────────────────────────────────────────────────
 
 function connect() {
@@ -41,6 +46,112 @@ function connect() {
 function setConnStatus(live) {
   document.getElementById('connDot').className = 'conn-dot ' + (live ? 'conn-live' : 'conn-off');
   document.getElementById('connLabel').textContent = live ? 'Live' : 'Reconnecting...';
+}
+
+// ── Gateway Control ─────────────────────────────────────────────────────────
+
+async function refreshGatewayStatus() {
+  try {
+    const res = await fetch('/api/gateway/status');
+    const data = await res.json();
+    _gwState = data.state || 'unknown';
+
+    const dot = document.getElementById('gwDot');
+    const label = document.getElementById('gwLabel');
+    const checked = document.getElementById('gwChecked');
+    const btnStart = document.getElementById('gwBtnStart');
+    const btnStop = document.getElementById('gwBtnStop');
+    const btnRestart = document.getElementById('gwBtnRestart');
+
+    // Update dot class
+    dot.className = 'gw-dot gw-' + _gwState;
+
+    // Update label
+    const stateLabels = {
+      running: 'Gateway · Running',
+      stopped: 'Gateway · Stopped',
+      error: 'Gateway · Error',
+      unreachable: 'Gateway · Unreachable',
+      unknown: 'Gateway · Unknown'
+    };
+    label.textContent = stateLabels[_gwState] || 'Gateway · ' + _gwState;
+
+    // Update last-checked time
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    checked.textContent = `(checked ${timeStr})`;
+
+    // Update button states
+    btnStart.disabled = _gwState === 'running' || _gwBusy;
+    btnStop.disabled = _gwState === 'stopped' || _gwBusy;
+    btnRestart.disabled = _gwBusy;
+  } catch (e) {
+    _gwState = 'unreachable';
+    document.getElementById('gwDot').className = 'gw-dot gw-unreachable';
+    document.getElementById('gwLabel').textContent = 'Gateway · Unreachable';
+  }
+}
+
+async function gatewayAction(action) {
+  if (_gwBusy) return;
+
+  // Confirm for destructive actions
+  if ((action === 'stop' || action === 'restart') && !confirm(`Are you sure you want to ${action} the gateway?`)) {
+    return;
+  }
+
+  _gwBusy = true;
+  const dot = document.getElementById('gwDot');
+  const label = document.getElementById('gwLabel');
+  const btnStart = document.getElementById('gwBtnStart');
+  const btnStop = document.getElementById('gwBtnStop');
+  const btnRestart = document.getElementById('gwBtnRestart');
+
+  // Disable all buttons
+  btnStart.disabled = true;
+  btnStop.disabled = true;
+  btnRestart.disabled = true;
+
+  // Show busy state
+  dot.className = 'gw-dot gw-busy';
+  const actionLabels = { start: 'Starting...', stop: 'Stopping...', restart: 'Restarting...' };
+  label.textContent = actionLabels[action] || 'Busy...';
+
+  try {
+    const method = action === 'start' ? 'POST' : 'POST';
+    const endpoint = `/api/gateway/${action}`;
+    const res = await fetch(endpoint, { method });
+    const data = await res.json();
+
+    if (!data.ok) {
+      alert(`Failed to ${action} gateway:\n${data.stderr || data.message || 'Unknown error'}`);
+    }
+
+    // Refresh status after a short delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    await refreshGatewayStatus();
+  } catch (e) {
+    alert(`Error: ${e.message}`);
+    await refreshGatewayStatus();
+  } finally {
+    _gwBusy = false;
+  }
+}
+
+function showGatewayBanner(message) {
+  const banner = document.getElementById('gatewayBanner');
+  const text = document.getElementById('gatewayBannerText');
+  text.textContent = message;
+  banner.style.display = 'flex';
+}
+
+function dismissGatewayBanner() {
+  document.getElementById('gatewayBanner').style.display = 'none';
+}
+
+function startGatewayPolling() {
+  refreshGatewayStatus();
+  _gwPollTimer = setInterval(refreshGatewayStatus, 5000);
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
@@ -535,7 +646,7 @@ async function setAsMain(role) {
 
     if (data.ok) {
       btn.textContent = '★';
-      alert(`${role} is now the primary chat agent!\n\nNote: The gateway may need a restart for changes to take full effect.`);
+      showGatewayBanner('⚠ Gateway restart recommended — persona change may require it.');
       // Reload agent registry to show updated state
       setTimeout(() => {
         loadAgentRegistry();
@@ -574,3 +685,4 @@ fetch('/api/state')
 connect();
 checkOpenclawSync();
 loadAgentRegistry();
+startGatewayPolling();

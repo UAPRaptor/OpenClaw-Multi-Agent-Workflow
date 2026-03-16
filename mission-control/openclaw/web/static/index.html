@@ -114,6 +114,47 @@
     .conn-off  { background: var(--red); }
     .conn-status { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; }
 
+    /* Gateway control bar */
+    .gateway-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+    .gateway-status { display: flex; align-items: center; gap: 8px; }
+    .gw-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      display: inline-block;
+    }
+    .gw-running  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .gw-stopped  { background: var(--red); }
+    .gw-busy     { background: var(--yellow); animation: pulse-gw 1s infinite; }
+    .gw-unknown  { background: var(--text-muted); }
+    @keyframes pulse-gw { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+    .gw-checked { color: var(--text-muted); font-size: 11px; }
+    .gateway-actions { display: flex; gap: 6px; }
+    .gw-btn {
+      background: var(--border); border: 1px solid rgba(255,255,255,0.06);
+      color: var(--text); font-size: 11px; font-weight: 500;
+      padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: all 0.15s;
+    }
+    .gw-btn:hover { background: rgba(255,255,255,0.08); }
+    .gw-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .gw-btn-danger { color: var(--red); }
+    .gw-btn-ghost { background: transparent; border-color: transparent; }
+    .gateway-banner {
+      background: rgba(210,153,34,0.12); border-bottom: 1px solid rgba(210,153,34,0.3);
+      padding: 8px 24px; font-size: 12px; display: flex; align-items: center; gap: 12px;
+    }
+    .gw-banner-dismiss {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      font-size: 14px; margin-left: auto;
+    }
+
     #morning-report-modal {
       display: none;
       position: fixed; inset: 0;
@@ -152,6 +193,26 @@
       </nav>
     </div>
   </header>
+
+  <div class="gateway-bar" id="gatewayBar">
+    <div class="gateway-status">
+      <span class="gw-dot" id="gwDot"></span>
+      <span id="gwLabel">Gateway</span>
+      <span class="gw-checked" id="gwChecked"></span>
+    </div>
+    <div class="gateway-actions">
+      <button id="gwBtnStart" class="gw-btn" onclick="gatewayAction('start')">Start</button>
+      <button id="gwBtnStop" class="gw-btn gw-btn-danger" onclick="gatewayAction('stop')">Stop</button>
+      <button id="gwBtnRestart" class="gw-btn" onclick="gatewayAction('restart')">Restart</button>
+      <button id="gwBtnRefresh" class="gw-btn gw-btn-ghost" onclick="refreshGatewayStatus()">↻</button>
+    </div>
+  </div>
+
+  <div class="gateway-banner" id="gatewayBanner" style="display:none">
+    <span id="gatewayBannerText"></span>
+    <button class="gw-btn" style="margin-left:12px;" onclick="gatewayAction('restart')">Restart Now</button>
+    <button class="gw-banner-dismiss" onclick="dismissGatewayBanner()">✕</button>
+  </div>
 
   <div class="main-content">
     <!-- No workspace state -->

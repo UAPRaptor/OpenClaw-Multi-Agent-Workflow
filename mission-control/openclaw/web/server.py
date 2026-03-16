@@ -117,6 +117,14 @@ async def open_folder(path: str) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+@app.get("/api/browse-folder")
+async def browse_folder() -> JSONResponse:
+    """Opens the OS native folder-picker dialog; returns the selected path or null."""
+    from openclaw.platform_utils import pick_folder_dialog
+    selected = pick_folder_dialog("Select OpenClaw Workspace Folder")
+    return JSONResponse({"path": selected})
+
+
 @app.get("/api/prerequisites")
 async def check_prerequisites(target: str = "") -> JSONResponse:
     from openclaw.installer.prerequisite_checker import run_all_checks, all_clear

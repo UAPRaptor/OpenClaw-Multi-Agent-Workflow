@@ -154,7 +154,10 @@
         <div class="wizard-title">Choose Workspace Location</div>
         <div class="wizard-sub">This is where all agent files, projects, and builds will be stored.</div>
         <label class="field-label" for="targetDir">Workspace folder path</label>
-        <input type="text" id="targetDir" placeholder="e.g. /Users/you/openclaw-workspace" oninput="debounceCheckPath()" />
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" id="targetDir" placeholder="e.g. /Users/you/openclaw-workspace" oninput="debounceCheckPath()" style="flex:1;" />
+          <button class="btn btn-ghost" id="btnBrowse" onclick="browseFolderDialog()" style="white-space:nowrap;padding:8px 14px;" title="Open folder picker">Browse…</button>
+        </div>
         <p style="font-size:12px;color:var(--text-muted);margin-top:6px;">
           The folder will be created if it does not exist. Avoid paths inside cloud-synced folders (Dropbox, OneDrive) as agents write files frequently.
         </p>

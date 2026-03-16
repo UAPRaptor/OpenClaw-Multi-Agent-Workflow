@@ -26,7 +26,7 @@ Bugs reported during testing — fix these before resuming feature work. Each fi
 
 - [x] [D2] **Installer Step 3: "New location" button does nothing** — Root cause: goStep(1) triggered loadPrereqs() which re-detected the existing workspace and bounced back to step 0 in a loop. Fixed by jumping directly to step 2 (prereqs already passed). [📷](training/bugs/bug5-new-location-broken.png)
 
-- [ ] [D3] **Installer Step 3: Allow manually browsing for workspaces** — Add a "Browse" button or manual path input field so users can select a workspace that isn't automatically detected by the system. Useful if workspace is on an external drive, network location, or in a non-standard directory. [📷](training/bugs/bug5-browse-workspace.png)
+- [x] [D3] **Installer Step 3: Allow manually browsing for workspaces** — "Browse…" button added; calls /api/browse-folder which opens native OS folder dialog (PowerShell on Windows, osascript on Mac); selected path populates input and triggers existing-workspace detection. [📷](training/bugs/bug5-browse-workspace.png)
 
 - [ ] [D3] **Installer Step 3: Manage existing agents in detected workspace** — When an existing workspace with agents is found, show options to: (1) view/edit existing agent names, (2) delete specific agents, (3) add new agents from selected theme without overwriting existing ones, (4) replace all agents. Currently just offers "Update" or "Start Fresh" with no granularity. [📷](training/bugs/bug5-manage-agents.png)
 

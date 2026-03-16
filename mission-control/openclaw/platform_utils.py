@@ -91,6 +91,65 @@ def open_browser(url: str) -> None:
         subprocess.Popen(["xdg-open", url])
 
 
+def pick_folder_dialog(title: str = "Select Workspace Folder") -> str | None:
+    """
+    Opens the OS native folder-picker dialog and returns the selected path,
+    or None if the user cancelled.
+    Blocks until the user closes the dialog.
+    """
+    if is_mac():
+        script = f'choose folder with prompt "{title}"'
+        try:
+            result = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True, text=True, timeout=60,
+            )
+            if result.returncode == 0:
+                # osascript returns "alias Macintosh HD:Users:bob:Documents:foo:"
+                # Convert alias syntax to POSIX path
+                alias = result.stdout.strip()
+                posix = subprocess.run(
+                    ["osascript", "-e", f'POSIX path of ("{alias}" as alias)'],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if posix.returncode == 0:
+                    return posix.stdout.strip().rstrip("/")
+        except Exception:
+            pass
+        return None
+
+    if is_windows():
+        ps_script = (
+            "Add-Type -AssemblyName System.Windows.Forms; "
+            "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
+            f"$d.Description = '{title}'; "
+            "$d.ShowNewFolderButton = $true; "
+            "if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }"
+        )
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+        except Exception:
+            pass
+        return None
+
+    # Linux / fallback: try zenity (common on GNOME desktops)
+    try:
+        result = subprocess.run(
+            ["zenity", "--file-selection", "--directory", f"--title={title}"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
 def get_platform_label() -> str:
     if is_mac():
         return "macOS"

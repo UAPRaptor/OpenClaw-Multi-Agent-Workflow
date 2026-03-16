@@ -456,6 +456,24 @@ function closeProviderForm() {
 
 // ── Step 3: Target directory ───────────────────────────────────────────────
 
+async function browseFolderDialog() {
+  const btn = document.getElementById('btnBrowse');
+  if (btn) { btn.disabled = true; btn.textContent = 'Opening…'; }
+  try {
+    const res = await fetch('/api/browse-folder');
+    const data = await res.json();
+    if (data.path) {
+      state.targetDir = data.path;
+      const input = document.getElementById('targetDir');
+      if (input) input.value = data.path;
+      checkPath();
+    }
+  } catch (e) { /* user cancelled or dialog unavailable — no-op */ }
+  finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Browse…'; }
+  }
+}
+
 let _pathCheckTimer = null;
 
 function debounceCheckPath() {

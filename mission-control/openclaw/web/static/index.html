@@ -32,13 +32,19 @@
     .agent-card-status { font-size: 12px; display: flex; align-items: center; }
     .agent-card-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
     .agent-cog {
-      position: absolute; top: 8px; right: 8px;
       background: none; border: none; cursor: pointer;
       color: var(--text-muted); font-size: 14px; padding: 2px 4px;
       border-radius: 4px; line-height: 1; opacity: 0.5;
       transition: opacity 0.15s;
     }
     .agent-cog:hover { opacity: 1; color: var(--text); }
+    .agent-start-btn {
+      background: none; border: 1px solid var(--border); cursor: pointer;
+      color: var(--accent); font-size: 11px; font-weight: 500; padding: 4px 8px;
+      border-radius: 3px; line-height: 1; transition: all 0.15s;
+    }
+    .agent-start-btn:hover { border-color: var(--accent); background: rgba(88,166,255,0.08); }
+    .agent-start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
     /* Agent details modal */
     .agent-modal-overlay {

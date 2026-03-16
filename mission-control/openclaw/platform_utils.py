@@ -241,6 +241,17 @@ def save_last_workspace(path: Path) -> None:
         pass  # Non-critical — installer still succeeds
 
 
+def load_last_workspace() -> str | None:
+    """Loads the last workspace path from ~/.openclaw-mission-control.json."""
+    try:
+        if _MISSION_CONTROL_CONFIG.exists():
+            data = json.loads(_MISSION_CONTROL_CONFIG.read_text(encoding="utf-8"))
+            return data.get("last_workspace")
+    except Exception:
+        pass
+    return None
+
+
 def get_hardware_info() -> dict:
     """
     Detects machine specs and returns a recommended tier + model config.

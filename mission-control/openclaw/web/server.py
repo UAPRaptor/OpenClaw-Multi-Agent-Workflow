@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from openclaw.web.websocket_hub import hub
 from openclaw.platform_utils import (
     get_corpus_dir, get_default_workspace_dir, find_existing_workspaces,
-    save_last_workspace, write_openclaw_workspace_path,
+    save_last_workspace, load_last_workspace, write_openclaw_workspace_path,
     get_hardware_info, find_active_claude_processes,
     detect_openclaw_models, find_openclaw_config_path, update_openclaw_config,
     find_openclaw_binary, open_browser, is_windows,
@@ -419,6 +419,10 @@ async def run_install(body: dict) -> JSONResponse:
         launcher_files = write_agent_launchers(target, agents)
         created.extend(launcher_files)
 
+        # Inject workspace path into agents so they register with the correct workspace
+        for agent in agents:
+            agent["workspace_path"] = str(target)
+
         agent_reg_files = register_openclaw_agents(agents)
         created.extend(agent_reg_files)
 
@@ -747,6 +751,66 @@ async def cleanup_agent(body: dict) -> JSONResponse:
     except Exception as e:
         return JSONResponse(
             {"error": f"Operation failed: {str(e)}"},
+            status_code=500,
+        )
+
+
+@app.post("/api/agents/start/{role}")
+async def start_agent(role: str) -> JSONResponse:
+    """
+    Launches an agent by running its launcher script in a new terminal window.
+    This causes OpenClaw to create the agent/auth*.json file, making the agent chat-routable.
+
+    Path param: role (e.g. "pm", "architect", "builder")
+    """
+    from openclaw.platform_utils import load_last_workspace, is_windows
+
+    # Get the workspace path
+    workspace_path = load_last_workspace()
+    if not workspace_path:
+        return JSONResponse(
+            {"error": "No workspace found. Run the installer first."},
+            status_code=400,
+        )
+
+    workspace_path = Path(workspace_path)
+
+    # Find launcher script
+    if is_windows():
+        launcher = workspace_path / "launchers" / f"run-{role}.bat"
+    else:
+        launcher = workspace_path / "launchers" / f"run-{role}.sh"
+
+    if not launcher.exists():
+        return JSONResponse(
+            {"error": f"Launcher not found: {launcher}"},
+            status_code=404,
+        )
+
+    try:
+        import subprocess
+        if is_windows():
+            # Windows: open new cmd window and run the batch file
+            subprocess.Popen(
+                ["cmd", "/c", "start", "cmd", "/k", str(launcher)],
+                shell=False,
+            )
+        else:
+            # Mac/Linux: open Terminal.app and run the shell script
+            subprocess.Popen([
+                "osascript",
+                "-e",
+                f'tell app "Terminal" to do script "cd {workspace_path.as_posix()} && bash {launcher.as_posix()}"',
+            ])
+
+        return JSONResponse({
+            "ok": True,
+            "launched": role,
+            "message": f"Launched {role} agent in Terminal. Auth file will be created when the agent starts.",
+        })
+    except Exception as e:
+        return JSONResponse(
+            {"error": f"Failed to launch agent: {str(e)}"},
             status_code=500,
         )
 

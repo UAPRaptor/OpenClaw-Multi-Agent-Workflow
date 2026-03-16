@@ -40,12 +40,17 @@ def register_openclaw_agents(agents: list[dict]) -> list[str]:
     base_dir.mkdir(parents=True, exist_ok=True)
     created = []
     agent_ids = []
+    workspace_path = None
 
     for agent in agents:
         role = agent["role"]
         agent_dir = base_dir / role
         agent_dir.mkdir(exist_ok=True)
         created.append(str(agent_dir))
+
+        # Extract workspace path from first agent (all agents in a team use the same workspace)
+        if workspace_path is None and "workspace_path" in agent:
+            workspace_path = agent["workspace_path"]
 
         context = {
             **agent,
@@ -58,21 +63,28 @@ def register_openclaw_agents(agents: list[dict]) -> list[str]:
         agent_ids.append(role)
 
     # Register agents in openclaw.json so they appear in OpenClaw agents list
-    _register_agents_in_config(agent_ids)
+    _register_agents_in_config(agent_ids, workspace_path)
 
     return created
 
 
-def _register_agents_in_config(agent_ids: list[str]) -> bool:
+def _register_agents_in_config(agent_ids: list[str], workspace_path: str | None = None) -> bool:
     """
     Adds agents to openclaw.json's agents.list so they appear in the
     OpenClaw agents list and become available for chat.
 
+    If workspace_path is provided, uses it; otherwise falls back to the default.
     Returns True if successful, False otherwise.
     """
     config_path = Path.home() / ".openclaw" / "openclaw.json"
     if not config_path.exists():
         return False
+
+    # Use provided workspace path or fall back to default
+    if workspace_path is None:
+        workspace_path = str(Path.home() / ".openclaw" / "workspace")
+    else:
+        workspace_path = str(workspace_path)
 
     try:
         data = json.loads(config_path.read_text(encoding="utf-8"))
@@ -93,7 +105,7 @@ def _register_agents_in_config(agent_ids: list[str]) -> bool:
             # Add agent entry
             data["agents"]["list"].append({
                 "id": agent_id,
-                "workspace": str(Path.home() / ".openclaw" / "workspace"),
+                "workspace": workspace_path,
             })
 
         # Write back to config
@@ -210,8 +222,19 @@ def sync_existing_agents_to_config() -> list[str]:
     if not agents_dir.exists():
         return registered
 
-    # Find all agents with IDENTITY.md
+    # Find all agents with IDENTITY.md and detect workspace from config if available
     agent_ids = []
+    workspace_path = None
+    config_path = Path.home() / ".openclaw" / "config.json"
+
+    # Try to read the workspace path from Mission Control's config
+    if config_path.exists():
+        try:
+            config_data = json.loads(config_path.read_text(encoding="utf-8"))
+            workspace_path = config_data.get("workspace") or config_data.get("workspaceDirectory")
+        except Exception:
+            pass
+
     for agent_dir in agents_dir.iterdir():
         if agent_dir.is_dir() and (agent_dir / "IDENTITY.md").exists():
             agent_ids.append(agent_dir.name)
@@ -220,16 +243,16 @@ def sync_existing_agents_to_config() -> list[str]:
     if agent_ids:
         for agent_id in agent_ids:
             # Check if already in config
-            config_path = Path.home() / ".openclaw" / "openclaw.json"
-            if config_path.exists():
+            openclaw_config = Path.home() / ".openclaw" / "openclaw.json"
+            if openclaw_config.exists():
                 try:
-                    data = json.loads(config_path.read_text(encoding="utf-8"))
+                    data = json.loads(openclaw_config.read_text(encoding="utf-8"))
                     existing = [a for a in data.get("agents", {}).get("list", []) if a.get("id") == agent_id]
                     if not existing:
                         registered.append(agent_id)
                 except Exception:
                     pass
 
-        _register_agents_in_config(agent_ids)
+        _register_agents_in_config(agent_ids, workspace_path)
 
     return registered

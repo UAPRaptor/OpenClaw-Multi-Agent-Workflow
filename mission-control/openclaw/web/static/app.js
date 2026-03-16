@@ -105,7 +105,10 @@ function renderAgents(agents) {
 
   grid.innerHTML = entries.map(a => `
     <div class="agent-card">
-      <button class="agent-cog" onclick="showAgentDetails('${escHtml(a.role || '')}')" title="Agent details">⚙</button>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+        <button class="agent-cog" onclick="showAgentDetails('${escHtml(a.role || '')}')" title="Agent details">⚙</button>
+        <button class="agent-start-btn" onclick="startAgent('${escHtml(a.role || '')}')" title="Launch agent in Terminal">▶ Start</button>
+      </div>
       <div class="agent-card-role">${escHtml(a.role || '')}</div>
       <div class="agent-card-char">${escHtml(a.character || '—')}</div>
       <div class="agent-card-status">
@@ -466,6 +469,35 @@ async function purgeAgent(agentId) {
     }
   } catch (e) {
     alert(`Error: ${e.message}`);
+  }
+}
+
+async function startAgent(role) {
+  try {
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.textContent = '⏳ Starting...';
+    btn.disabled = true;
+
+    const res = await fetch(`/api/agents/start/${role}`, { method: 'POST' });
+    const data = await res.json();
+
+    if (data.ok) {
+      btn.textContent = '✓ Started';
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }, 3000);
+    } else {
+      alert(`Failed to start ${role}: ${data.error}`);
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+  } catch (e) {
+    alert(`Error: ${e.message}`);
+    const btn = event.target;
+    btn.textContent = '▶ Start';
+    btn.disabled = false;
   }
 }
 

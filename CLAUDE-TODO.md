@@ -57,17 +57,53 @@ Confirm the current build works end-to-end, then lock down the security surface 
 
 ---
 
-### v0.3.0 — OpenClaw Agent Registration
+### v0.3.0 — OpenClaw Agent Registration + Agent Identity Model
 Make installed agents first-class citizens of the OpenClaw universe so they appear in OpenClaw's native dashboard and can be chatted with directly.
 
-**Problem:** The installer creates workspace files (AGENTS.md, SOUL.md, run scripts) but never registers agents with OpenClaw's own agent directory system at `~/.openclaw/agents/`. Agents are invisible to OpenClaw's native UI and chat interface.
+**Problem:** The installer creates workspace files (AGENTS.md, SOUL.md, run scripts) but never registers agents with OpenClaw's own agent directory system at `~/.openclaw/agents/`. Agents are invisible to OpenClaw's native UI and chat interface. Additionally, no explicit `agentId`/`displayName` fields, no cleanup path for orphaned agents, no visibility into which agents are managed vs runtime vs test.
 
-**Required work:**
+**Completed work:**
 - [x] [D3] Create OpenClaw agent directories — for each installed role, create `~/.openclaw/agents/{role}/` with `IDENTITY.md` (character persona, role, philosophy) — loaded by `openclaw start --agent {role}`
 - [x] [D3] Register agents at install time — `agent_registrar.py` renders `IDENTITY.md.template` per role and writes to `~/.openclaw/agents/{role}/IDENTITY.md`
 - [x] [D3] Launch scripts per agent — per-role launchers run `openclaw start --agent {role} --model {model}` from workspace root; also added missing `HEARTBEAT.md` to workspace
+- [x] [D2] Agent identity model (Item 1) — explicit `agentId` and `displayName` fields throughout; centralized `ROLE_LABELS` dict (single import in `template_deployer.py`); removed 4 duplicate definitions
+- [x] [D2] Agent cleanup tools (Item 5) — `unregister_agent()`, `archive_agent()`, `purge_agent()`, `sync_existing_agents_to_config()` functions; `POST /api/agents/cleanup` endpoint; Agent Cleanup UI card with action buttons
+- [x] [D3] Agent reconciliation (Item 7) — `agent_reconciler.py` classifies agents as managed/runtime/test/orphaned/unmanaged/missing; `GET /api/agent-registry` endpoint; displayName markdown-strip fix
+
+**Remaining work:**
 - [ ] [D2] Mission Control "Start Agent" button — add a start button to each agent card on the dashboard that runs that agent's launcher script in a new Terminal window
 - [ ] [D4] Click-to-chat with agent — clicking an agent card in Mission Control opens a chat session with that agent (either via OpenClaw's native chat or an embedded chat panel)
+
+---
+
+### v0.3.x — Agent Identity UI (deferred from Items 2–4, 6, 8)
+
+Remaining agent UX polish. Requires Items 1/5/7 (complete as of v0.3.0) as foundation.
+
+- [ ] [D2] **Item 2**: Agent card redesign — show displayName as primary, role key as secondary, agentId as metadata footer
+- [ ] [D3] **Item 3**: "Open in Chat" button on each agent card — deep-links to OpenClaw's native chat for that agent (requires figuring out OpenClaw chat URL scheme)
+- [ ] [D3] **Item 4**: Dedicated Agent Registry page — full-page view of managed/runtime/test/orphaned/missing agents with sort/filter
+- [ ] [D2] **Item 6**: Provenance timestamps — write createdAt + workflowId to IDENTITY.md footer at install time
+- [ ] [D3] **Item 8**: displayName → role → agentId mapping panel — explicit table UI showing the three-field identity for each agent
+
+---
+
+### v0.4.x — Embedded Agent Chat (chat panel in Mission Control)
+
+Allow chatting with agents directly from the Mission Control dashboard, without needing the OpenClaw native app. Blocked by needing to understand the OpenClaw gateway API shape.
+
+**Architecture summary:**
+Mission Control is an external observer at port 8765. The OpenClaw gateway runs at port 18789. To chat from MC, the FastAPI server must proxy messages to the gateway and stream token responses back to the browser. The gateway token is already available in `~/.openclaw/openclaw.json`.
+
+**Reasoning:** Agents created by Mission Control aren't natively chat-routable because they lack routing rules in the OpenClaw gateway. MC could bridge this by proxying to the gateway directly (for authorized users only). Requires reverse-engineering the gateway HTTP API by sniffing OpenClaw Chat traffic.
+
+**Sub-tasks:**
+- [ ] [D2] Reverse-engineer OpenClaw gateway HTTP API — sniff traffic from OpenClaw Chat using browser devtools or mitmproxy; document the message send endpoint and response format
+- [ ] [D3] Gateway proxy endpoint — add `POST /api/chat/send` in server.py that calls the gateway API with the token from openclaw.json and returns the response (non-streaming first)
+- [ ] [D3] SSE streaming — once non-streaming works, upgrade to Server-Sent Events so token responses stream to the browser in real-time
+- [ ] [D3] Session tracking — store session IDs per agent per browser session so conversation history threads correctly; add `DELETE /api/chat/session/{agentId}` to reset
+- [ ] [D2] Chat panel UI — add a collapsible chat panel to each agent card; input box + scrollable message history; wired to `/api/chat/send`
+- [ ] [D2] Gateway health check — add gateway status indicator (running/not running) to the dashboard so users know if chat will work before trying
 
 ---
 
@@ -132,3 +168,7 @@ Standalone binaries and polished docs. Production-ready release.
 | 2026-03-14 | Version auto-increment added to package.bat and package.sh (patch/minor/major/keep prompt); CLAUDE-TODO.md restructured into version milestones (v0.2.0 → v1.0.0) |
 | 2026-03-14 | v0.2.0 — Agent registration first attempt (wrong — used CLAUDE.md naming, reverted in v0.2.1) |
 | 2026-03-15 | v0.2.1 — Correct OpenClaw agent registration: IDENTITY.md.template in corpus/agents/ deployed to ~/.openclaw/agents/{role}/IDENTITY.md; HEARTBEAT.md added to workspace; launchers use openclaw start --agent {role} --model {model}; all CLAUDE.md workspace files removed |
+| 2026-03-16 | v0.3.0 — Agent identity model (Item 1): explicit agentId + displayName fields throughout; centralized ROLE_LABELS to single import in template_deployer.py; removed 4 duplicate definitions |
+| 2026-03-16 | v0.3.0 — Agent cleanup tools (Item 5): unregister_agent(), archive_agent(), purge_agent(), sync_existing_agents_to_config(); POST /api/agents/cleanup endpoint; Agent Cleanup & Orphan Management UI card |
+| 2026-03-16 | v0.3.0 — Agent reconciliation (Item 7): agent_reconciler.py classifies agents as managed/runtime/test/orphaned/unmanaged/missing; GET /api/agent-registry endpoint; displayName markdown-strip fix |
+| 2026-03-16 | Training: Added openclaw-gateway-architecture.md explaining OpenClaw gateway, sessions, agent routing, and bindings system |

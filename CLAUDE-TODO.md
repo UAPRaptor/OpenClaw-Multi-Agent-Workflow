@@ -71,7 +71,7 @@ Make installed agents first-class citizens of the OpenClaw universe so they appe
 - [x] [D3] Agent reconciliation (Item 7) — `agent_reconciler.py` classifies agents as managed/runtime/test/orphaned/unmanaged/missing; `GET /api/agent-registry` endpoint; displayName markdown-strip fix
 
 **Remaining work:**
-- [ ] [D2] Mission Control "Start Agent" button — add a start button to each agent card on the dashboard that runs that agent's launcher script in a new Terminal window
+- [x] [D2] Mission Control "Start Agent" button — add a start button to each agent card on the dashboard that runs that agent's launcher script in a new Terminal window
 - [ ] [D4] Click-to-chat with agent — clicking an agent card in Mission Control opens a chat session with that agent (either via OpenClaw's native chat or an embedded chat panel)
 
 ---
@@ -172,3 +172,4 @@ Standalone binaries and polished docs. Production-ready release.
 | 2026-03-16 | v0.3.0 — Agent cleanup tools (Item 5): unregister_agent(), archive_agent(), purge_agent(), sync_existing_agents_to_config(); POST /api/agents/cleanup endpoint; Agent Cleanup & Orphan Management UI card |
 | 2026-03-16 | v0.3.0 — Agent reconciliation (Item 7): agent_reconciler.py classifies agents as managed/runtime/test/orphaned/unmanaged/missing; GET /api/agent-registry endpoint; displayName markdown-strip fix |
 | 2026-03-16 | Training: Added openclaw-gateway-architecture.md explaining OpenClaw gateway, sessions, agent routing, and bindings system |
+| 2026-03-16 | v0.3.1 — Bug fix: Agent workspace path registration (was hardcoded to ~/.openclaw/workspace, now uses actual install location) + Start Agent button (POST /api/agents/start/{role}, launches in Terminal) |

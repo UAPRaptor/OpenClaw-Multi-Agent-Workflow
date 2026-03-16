@@ -174,3 +174,4 @@ Standalone binaries and polished docs. Production-ready release.
 | 2026-03-16 | Training: Added openclaw-gateway-architecture.md explaining OpenClaw gateway, sessions, agent routing, and bindings system |
 | 2026-03-16 | v0.3.1 — Bug fix: Agent workspace path registration + broken Start Agent button (launches in Terminal using non-existent openclaw start command) |
 | 2026-03-16 | v0.3.2 — Fix: Remove broken openclaw start; add proper Set as Main feature (PUT /api/agents/set-main/{role}) to promote agents to primary chat entrypoint. Replace Start button with Chat/Verify/Set-as-Main actions. Update launchers to use valid openclaw agent command. |
+| 2026-03-16 | v0.3.3 — Feature: Gateway control bar below header with status indicator (green/red/yellow) and buttons for start/stop/restart/refresh. All gateway lifecycle operations now available from UI. Auto-polls every 5 seconds. Restart banner shows after config changes. |

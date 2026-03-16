@@ -338,6 +338,137 @@ async function reregisterAgents() {
   }
 }
 
+// ── Agent Cleanup ──────────────────────────────────────────────────────────
+
+async function loadAgentRegistry() {
+  const card = document.getElementById('agentCleanupCard');
+  const body = document.getElementById('agentCleanupBody');
+  if (!card || !body) return;
+
+  try {
+    const res = await fetch('/api/agent-registry');
+    if (!res.ok) {
+      body.innerHTML = '<p style="color:var(--text-muted)">Unable to load agent registry.</p>';
+      return;
+    }
+    const report = await res.json();
+
+    // Only show card if there are orphaned/test agents
+    const hasOrphaned = (report.orphaned || []).length > 0;
+    const hasTest = (report.test || []).length > 0;
+    const hasMissing = (report.missing || []).length > 0;
+
+    if (!hasOrphaned && !hasTest && !hasMissing) {
+      card.style.display = 'none';
+      return;
+    }
+
+    card.style.display = 'block';
+    let html = '';
+
+    // Managed agents with chat status
+    if ((report.managed || []).length > 0) {
+      html += '<div style="margin-bottom:16px;"><h4 style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;text-transform:uppercase;">Managed Agents - Chat Status</h4>';
+      for (const agent of report.managed) {
+        const chatStatus = agent.chatAvailable ? '<span style="color:#4caf50;">✓ Chat available</span>' : '<span style="color:#f59e0b;">⚠ Not chat-routable</span>';
+        const note = agent.chatNote ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${escHtml(agent.chatNote)}</div>` : '';
+        html += `<div style="padding:8px;background:var(--border);border-radius:4px;margin-bottom:6px;font-size:12px;">
+          <div><strong>${escHtml(agent.displayName)}</strong> <span style="color:var(--text-muted);">(<code>${escHtml(agent.agentId)}</code>)</span></div>
+          <div style="margin-top:4px;">${chatStatus}</div>
+          ${note}
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    // Orphaned agents
+    if (hasOrphaned) {
+      html += '<div style="margin-bottom:16px;"><h4 style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;text-transform:uppercase;">Orphaned Agents</h4>';
+      for (const agent of report.orphaned) {
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:var(--border);border-radius:4px;margin-bottom:6px;font-size:12px;">
+          <span><strong>${escHtml(agent.agentId)}</strong> <span style="color:var(--text-muted);">${agent.isEmpty ? '(empty)' : '(with sessions)'}</span></span>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm" onclick="archiveAgent('${escHtml(agent.agentId)}')">Archive</button>
+            <button class="btn btn-sm" onclick="purgeAgent('${escHtml(agent.agentId)}')">Remove</button>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    // Test agents
+    if (hasTest) {
+      html += '<div style="margin-bottom:16px;"><h4 style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;text-transform:uppercase;">Test Agents</h4>';
+      for (const agent of report.test) {
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:var(--border);border-radius:4px;margin-bottom:6px;font-size:12px;">
+          <span><strong>${escHtml(agent.agentId)}</strong> <span style="color:var(--text-muted);">(${agent.category})</span></span>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm" onclick="archiveAgent('${escHtml(agent.agentId)}')">Archive</button>
+            <button class="btn btn-sm" onclick="purgeAgent('${escHtml(agent.agentId)}')">Remove</button>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    // Missing agents
+    if (hasMissing) {
+      html += '<div><h4 style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;text-transform:uppercase;">Missing Agents</h4>';
+      for (const agent of report.missing) {
+        html += `<div style="padding:8px;background:var(--border);border-radius:4px;margin-bottom:6px;font-size:12px;color:var(--text-muted);">
+          <strong>${escHtml(agent.displayName)}</strong> (${escHtml(agent.agentId)}) — expected by workspace but not registered
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = '<p style="color:var(--red)">Error loading agent registry.</p>';
+  }
+}
+
+async function archiveAgent(agentId) {
+  if (!confirm(`Archive agent ${agentId}? Its directory will be renamed with a timestamp, preserving session history.`)) return;
+  try {
+    const res = await fetch('/api/agents/cleanup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId, action: 'archive' }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      alert(`Agent ${agentId} archived.`);
+      loadAgentRegistry();
+    } else {
+      alert(`Archive failed: ${data.error}`);
+    }
+  } catch (e) {
+    alert(`Error: ${e.message}`);
+  }
+}
+
+async function purgeAgent(agentId) {
+  if (!confirm(`PERMANENTLY DELETE agent ${agentId} and all its files? This cannot be undone.`)) return;
+  if (!confirm('Are you sure? This will remove all session history and state.')) return;
+  try {
+    const res = await fetch('/api/agents/cleanup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId, action: 'purge', confirm: true }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      alert(`Agent ${agentId} removed.`);
+      loadAgentRegistry();
+    } else {
+      alert(`Removal failed: ${data.error}`);
+    }
+  } catch (e) {
+    alert(`Error: ${e.message}`);
+  }
+}
+
 // ── Version badge ──────────────────────────────────────────────────────────
 
 fetch('/api/version')
@@ -358,3 +489,4 @@ fetch('/api/state')
 
 connect();
 checkOpenclawSync();
+loadAgentRegistry();

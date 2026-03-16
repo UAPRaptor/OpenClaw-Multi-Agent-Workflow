@@ -393,6 +393,19 @@ Typical flow:
 
 ---
 
+## OpenClaw Gateway Architecture
+
+Agents and the Mission Control app must understand the OpenClaw Gateway as the core runtime.
+
+Key concepts covered in `openclaw-gateway-architecture.md`:
+- Gateway is the control plane — all agent invocation routes through it
+- Agents are logical entities, not OS processes; the gateway spawns sessions
+- Agent-to-agent coordination uses `agents_list`, `sessions_spawn`, `sessions_send` — not files
+- Gateway must be running before agents are spawned or registered
+- Agent manager apps interact with the gateway API, not directly with agents
+
+---
+
 ## Final Training Dataset Components
 
 The agent training corpus should contain:
@@ -407,3 +420,4 @@ The agent training corpus should contain:
 9. handoff rules
 10. night mode rules
 11. escalation rules
+12. gateway architecture and runtime model (`openclaw-gateway-architecture.md`)

@@ -170,9 +170,11 @@ def build_agent_list(roles: list[str], theme_data: dict, model_map: dict, custom
         # custom_characters overrides the theme character name for any role
         character = (custom_characters or {}).get(role) or role_chars.get("character", "—")
         agents.append({
-            "role": role,
-            "role_label": ROLE_LABELS.get(role, role.upper()),
-            "character": character,
+            "agentId": role,                                    # OpenClaw agent identifier (e.g. "pm")
+            "role": role,                                       # Workflow role key (same as agentId for managed agents)
+            "displayName": character,                           # Human-facing persona name (e.g. "Splinter")
+            "role_label": ROLE_LABELS.get(role, role.upper()),  # Human-readable role title (e.g. "Project Manager")
+            "character": character,                             # (kept for backwards compatibility with existing code)
             "philosophy": role_chars.get("philosophy", ""),
             "decision_style": role_chars.get("decision_style", ""),
             "responsibilities": ROLE_RESPONSIBILITIES.get(role, []),

@@ -6,6 +6,8 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from openclaw.installer.template_deployer import ROLE_LABELS
+
 
 TICKET_STATES = [
     "proposed", "ready", "in-progress", "blocked",
@@ -172,8 +174,10 @@ def read_agent_activity(workspace_root: Path, agents: list[str]) -> dict:
                     break
 
         result[role] = {
-            "role": role,
-            "character": characters.get(role, "—"),
+            "agentId": role,                                   # OpenClaw agent identifier
+            "role": role,                                      # Workflow role key
+            "displayName": characters.get(role, "—"),         # Persona name (e.g. "Splinter")
+            "character": characters.get(role, "—"),           # (kept for backwards compatibility)
             "status": status,
             "last_active": last_active,
             "workspace_path": str(workspace_root),
@@ -222,16 +226,8 @@ def parse_agent_characters(workspace_root: Path) -> dict:
     content = agents_file.read_text(encoding="utf-8", errors="ignore")
     characters = {}
 
-    role_map = {
-        "Project Manager": "pm",
-        "System Architect": "architect",
-        "Builder / Developer": "builder",
-        "QA / Test Engineer": "qa",
-        "Security Engineer": "security",
-        "DevOps / Release": "devops",
-        "UX / Documentation": "ux",
-        "Research Agent": "research",
-    }
+    # Build reverse mapping: label → role_key from ROLE_LABELS
+    role_map = {v: k for k, v in ROLE_LABELS.items()}
 
     current_role = None
     for line in content.splitlines():

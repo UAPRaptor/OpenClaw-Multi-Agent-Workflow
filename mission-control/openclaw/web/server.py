@@ -21,6 +21,7 @@ from openclaw.platform_utils import (
     detect_openclaw_models, find_openclaw_config_path, update_openclaw_config,
     find_openclaw_binary, open_browser, is_windows,
 )
+from openclaw.installer.template_deployer import ROLE_LABELS
 from openclaw import __version__
 
 # These are injected at startup from the CLI
@@ -232,13 +233,8 @@ async def get_workspace_agents(path: str) -> JSONResponse:
         character = char_match.group(1).strip() if char_match else '—'
         model = model_match.group(1).strip() if model_match else '—'
         # Derive role key from label (reverse of ROLE_LABELS)
-        role_label_map = {
-            "Project Manager": "pm", "System Architect": "architect",
-            "Builder / Developer": "builder", "QA / Test Engineer": "qa",
-            "Security Engineer": "security", "DevOps / Release": "devops",
-            "UX / Documentation": "ux", "Research Agent": "research",
-        }
-        role = role_label_map.get(role_label, role_label.lower().split()[0])
+        role_label_to_key = {v: k for k, v in ROLE_LABELS.items()}
+        role = role_label_to_key.get(role_label, role_label.lower().split()[0])
         agents.append({"role": role, "role_label": role_label, "character": character, "model": model})
 
     return JSONResponse({"agents": agents})
@@ -263,13 +259,7 @@ async def delete_workspace_agent(body: dict) -> JSONResponse:
     try:
         content = agents_file.read_text(encoding="utf-8")
         # Remove the section for this agent — from its ### header to the next ###
-        role_label_map = {
-            "pm": "Project Manager", "architect": "System Architect",
-            "builder": "Builder / Developer", "qa": "QA / Test Engineer",
-            "security": "Security Engineer", "devops": "DevOps / Release",
-            "ux": "UX / Documentation", "research": "Research Agent",
-        }
-        label = role_label_map.get(role, role.upper())
+        label = ROLE_LABELS.get(role, role.upper())
         # Remove block: ### {label}\n ... up to next ### or end of file
         pattern = _re.compile(
             r'^### ' + _re.escape(label) + r'\n.*?(?=^### |\Z)',
@@ -347,19 +337,14 @@ async def reregister_agents(body: dict) -> JSONResponse:
         content = agents_file.read_text(encoding="utf-8")
         sections = _re.split(r'^### ', content, flags=_re.MULTILINE)
         agents = []
-        role_label_map = {
-            "Project Manager": "pm", "System Architect": "architect",
-            "Builder / Developer": "builder", "QA / Test Engineer": "qa",
-            "Security Engineer": "security", "DevOps / Release": "devops",
-            "UX / Documentation": "ux", "Research Agent": "research",
-        }
+        role_label_to_key = {v: k for k, v in ROLE_LABELS.items()}
         for section in sections[1:]:
             lines = section.strip().split('\n')
             role_label = lines[0].strip()
             char_match = _re.search(r'\*\*Character:\*\*\s*(.+)', section)
             model_match = _re.search(r'\*\*Model:\*\*\s*(.+)', section)
             phil_match = _re.search(r'\*\*Philosophy:\*\*\s*(.+)', section)
-            role = role_label_map.get(role_label, role_label.lower().split()[0])
+            role = role_label_to_key.get(role_label, role_label.lower().split()[0])
             agents.append({
                 "role": role,
                 "role_label": role_label,
@@ -671,6 +656,101 @@ async def oauth_status_check(provider: str) -> JSONResponse:
     return JSONResponse({"status": _oauth_state.get(provider, "unknown"), "models": []})
 
 
+@app.get("/api/agent-registry")
+async def get_agent_registry() -> JSONResponse:
+    """
+    Returns agent reconciliation report: compares Mission Control's managed agents
+    (from workspace AGENTS.md) against OpenClaw's registered agents.
+    Classifies each agent as: managed, unmanaged, runtime, orphaned, test, or missing.
+    """
+    if not _workspace_root:
+        return JSONResponse(
+            {"error": "Workspace not loaded"},
+            status_code=400,
+        )
+
+    from openclaw.monitor.agent_reconciler import reconcile
+
+    report = reconcile(_workspace_root)
+    return JSONResponse(report)
+
+
+@app.post("/api/agents/cleanup")
+async def cleanup_agent(body: dict) -> JSONResponse:
+    """
+    Performs cleanup operations on an agent:
+    - "unregister": removes IDENTITY.md (keeps dir/sessions)
+    - "archive": renames dir to {id}-archived-{timestamp}
+    - "purge": removes entire directory (requires confirm: true)
+
+    Body: {"agentId": "...", "action": "archive|unregister|purge", "confirm": true}
+    """
+    agent_id = body.get("agentId", "")
+    action = body.get("action", "")
+    confirm = body.get("confirm", False)
+
+    if not agent_id or not action:
+        return JSONResponse(
+            {"error": "agentId and action required"},
+            status_code=400,
+        )
+
+    if action not in ("archive", "unregister", "purge"):
+        return JSONResponse(
+            {"error": f"action must be one of: archive, unregister, purge"},
+            status_code=400,
+        )
+
+    if action == "purge" and not confirm:
+        return JSONResponse(
+            {"error": "purge requires confirm: true"},
+            status_code=400,
+        )
+
+    from openclaw.installer.agent_registrar import (
+        unregister_agent, archive_agent, purge_agent,
+    )
+
+    try:
+        if action == "unregister":
+            ok = unregister_agent(agent_id)
+            if not ok:
+                return JSONResponse(
+                    {"error": f"Agent {agent_id} not found"},
+                    status_code=404,
+                )
+            return JSONResponse({"ok": True, "action": "unregister", "agentId": agent_id})
+
+        elif action == "archive":
+            new_path = archive_agent(agent_id)
+            if not new_path:
+                return JSONResponse(
+                    {"error": f"Agent {agent_id} not found or archive failed"},
+                    status_code=404,
+                )
+            return JSONResponse({
+                "ok": True,
+                "action": "archive",
+                "agentId": agent_id,
+                "newPath": new_path,
+            })
+
+        elif action == "purge":
+            ok = purge_agent(agent_id)
+            if not ok:
+                return JSONResponse(
+                    {"error": f"Agent {agent_id} not found or purge failed"},
+                    status_code=404,
+                )
+            return JSONResponse({"ok": True, "action": "purge", "agentId": agent_id})
+
+    except Exception as e:
+        return JSONResponse(
+            {"error": f"Operation failed: {str(e)}"},
+            status_code=500,
+        )
+
+
 # ── WebSocket ──────────────────────────────────────────────────────────────────
 
 @app.websocket("/ws")
@@ -718,6 +798,13 @@ def configure(store, workspace_root: Path) -> None:
     _workspace_root = workspace_root
     # Wire state changes to WebSocket broadcasts
     store.register_listener(hub.broadcast_from_thread)
+
+    # Sync any existing agents to openclaw.json (agents created but not yet registered)
+    from openclaw.installer.agent_registrar import sync_existing_agents_to_config
+    try:
+        sync_existing_agents_to_config()
+    except Exception:
+        pass  # Non-critical — if sync fails, continue startup
 
 
 def run(host: str = "127.0.0.1", port: int = 8765) -> None:

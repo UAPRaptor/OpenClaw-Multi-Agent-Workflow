@@ -924,15 +924,24 @@ async def get_gateway_status() -> JSONResponse:
             text=True,
             timeout=3,
         )
-        if result.returncode == 0:
+
+        # Check both stdout and stderr for status keywords
+        output_text = (result.stdout + result.stderr).lower()
+
+        # Determine state based on message content, not return code
+        # (status command returns 0 regardless of whether gateway is running or stopped)
+        state = "unknown"
+        if "running" in output_text or "active" in output_text:
             state = "running"
-        elif "not running" in result.stderr.lower() or "stopped" in result.stderr.lower():
+        elif "not running" in output_text or "stopped" in output_text or "inactive" in output_text:
             state = "stopped"
-        else:
+        elif result.returncode != 0:
             state = "error"
+        else:
+            state = "unknown"
 
         return JSONResponse({
-            "ok": result.returncode == 0,
+            "ok": state == "running",
             "state": state,
             "message": result.stdout.strip() or result.stderr.strip() or f"Gateway is {state}",
             "stdout": result.stdout.strip(),

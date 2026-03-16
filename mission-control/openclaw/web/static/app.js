@@ -704,17 +704,26 @@ async function sendChatMessage() {
         sessionId: _chatSessions[_chatAgent] || null,
       }),
     });
-    const data = await res.json();
 
     // Remove typing indicator
     document.getElementById('chatTyping')?.remove();
 
+    if (!res.ok && res.status !== 200) {
+      const errText = await res.text().catch(() => '');
+      let errMsg = `Server error ${res.status}`;
+      try { errMsg = JSON.parse(errText).error || errMsg; } catch (_) {}
+      _chatHistory[_chatAgent].push({ role: 'error', text: `Error: ${errMsg}` });
+      _renderChatHistory();
+      return;
+    }
+
+    const data = await res.json();
     if (data.ok) {
       _chatSessions[_chatAgent] = data.sessionId;
       _chatHistory[_chatAgent].push({ role: 'assistant', text: data.response, model: data.model });
       _updateChatMeta();
     } else {
-      _chatHistory[_chatAgent].push({ role: 'error', text: `Error: ${data.error || 'Unknown error'}` });
+      _chatHistory[_chatAgent].push({ role: 'error', text: `Error: ${data.error || 'Agent returned no response'}` });
     }
     _renderChatHistory();
   } catch (e) {

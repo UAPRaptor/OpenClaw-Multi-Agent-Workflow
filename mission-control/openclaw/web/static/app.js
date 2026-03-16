@@ -274,6 +274,70 @@ function escHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+// ── OpenClaw Sync ──────────────────────────────────────────────────────────
+
+async function checkOpenclawSync() {
+  const card = document.getElementById('openclawSyncCard');
+  const body = document.getElementById('openclawSyncBody');
+  if (!card || !body) return;
+  try {
+    const res = await fetch('/api/openclaw-workspace');
+    const data = await res.json();
+    card.style.display = 'block';
+    if (data.match) {
+      body.innerHTML = `<span class="badge-ok">✔ OpenClaw workspace matches Mission Control workspace</span>
+        <span style="margin-left:12px;font-family:monospace;font-size:12px;">${escHtml(data.mc_workspace || '')}</span>`;
+    } else {
+      const ocPath = data.openclaw_workspace || '(not configured)';
+      const mcPath = data.mc_workspace || '(unknown)';
+      body.innerHTML = `
+        <span class="badge-warn">⚠ Workspace path mismatch — agents may not appear in OpenClaw</span>
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;font-size:12px;">
+          <div><span style="color:var(--text-muted);width:160px;display:inline-block;">OpenClaw workspace:</span><code>${escHtml(ocPath)}</code></div>
+          <div><span style="color:var(--text-muted);width:160px;display:inline-block;">Mission Control:</span><code>${escHtml(mcPath)}</code></div>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:var(--text-muted);">
+          Click "Re-register Agents" to write the correct workspace path to OpenClaw's config and re-register all agents.
+        </div>`;
+    }
+  } catch (e) {
+    // Non-critical — hide the card
+  }
+}
+
+async function reregisterAgents() {
+  const body = document.getElementById('openclawSyncBody');
+  const btn = document.querySelector('#openclawSyncCard button');
+  if (btn) { btn.disabled = true; btn.textContent = 'Registering…'; }
+
+  try {
+    // Get workspace path from current state
+    const stateRes = await fetch('/api/state');
+    const state = await stateRes.json();
+    const workspace = state?.workspace || '';
+    if (!workspace) {
+      if (body) body.innerHTML = '<span class="badge-warn">⚠ No workspace path found in current state.</span>';
+      return;
+    }
+    const res = await fetch('/api/reregister-agents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: workspace }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (body) body.innerHTML = `<span class="badge-ok">✔ Re-registered ${data.registered} agents. OpenClaw workspace path updated.</span>`;
+      setTimeout(checkOpenclawSync, 2000);
+    } else {
+      if (body) body.innerHTML = `<span class="badge-warn">⚠ Re-registration failed: ${escHtml(data.error || 'unknown error')}</span>`;
+    }
+  } catch (e) {
+    if (body) body.innerHTML = '<span class="badge-warn">⚠ Could not reach server.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Re-register Agents'; }
+  }
+}
+
 // ── Version badge ──────────────────────────────────────────────────────────
 
 fetch('/api/version')
@@ -293,3 +357,4 @@ fetch('/api/state')
   .catch(() => {});
 
 connect();
+checkOpenclawSync();

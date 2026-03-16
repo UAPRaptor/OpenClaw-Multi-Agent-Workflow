@@ -513,8 +513,58 @@ async function checkPath() {
     const defaultMode = data.is_single_agent ? 'upgrade' : 'replace';
     selectInstallMode(defaultMode);
     panel.classList.remove('section-hidden');
+
+    // Load and render the existing agent list
+    loadExistingAgents(path);
   } catch (e) {
     panel.classList.add('section-hidden');
+  }
+}
+
+async function loadExistingAgents(workspacePath) {
+  const list = document.getElementById('existingAgentList');
+  if (!list) return;
+  list.innerHTML = '<p style="color:var(--text-muted);font-size:12px">Loading agents…</p>';
+  try {
+    const res = await fetch(`/api/workspace-agents?path=${encodeURIComponent(workspacePath)}`);
+    const data = await res.json();
+    if (!data.agents || !data.agents.length) {
+      list.innerHTML = '<p style="color:var(--text-muted);font-size:12px">No agents found in AGENTS.md.</p>';
+      return;
+    }
+    list.innerHTML = data.agents.map(a => `
+      <div class="existing-agent-row" id="agent-row-${escHtml(a.role)}">
+        <div style="flex:1;">
+          <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;">${escHtml(a.role_label)}</span>
+          <span style="margin-left:10px;font-size:13px;font-weight:600;">${escHtml(a.character)}</span>
+          <span style="margin-left:8px;font-size:11px;color:var(--text-muted);font-family:monospace;">${escHtml(a.model)}</span>
+        </div>
+        <button class="btn btn-ghost" style="padding:3px 10px;font-size:11px;color:var(--red);border-color:rgba(248,81,73,0.3);"
+          onclick="deleteAgent(${escHtml(JSON.stringify(workspacePath))}, '${escHtml(a.role)}')">Remove</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    list.innerHTML = '<p style="color:var(--red);font-size:12px">Could not load agents.</p>';
+  }
+}
+
+async function deleteAgent(workspacePath, role) {
+  if (!confirm(`Remove the ${role} agent from this workspace? This also removes its OpenClaw registration.`)) return;
+  try {
+    const res = await fetch('/api/workspace-agents/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: workspacePath, role }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const row = document.getElementById(`agent-row-${role}`);
+      if (row) row.remove();
+    } else {
+      alert(`Could not remove agent: ${data.error}`);
+    }
+  } catch (e) {
+    alert('Could not remove agent.');
   }
 }
 

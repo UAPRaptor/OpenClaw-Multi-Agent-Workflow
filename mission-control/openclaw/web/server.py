@@ -16,7 +16,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from openclaw.web.websocket_hub import hub
 from openclaw.platform_utils import (
     get_corpus_dir, get_default_workspace_dir, find_existing_workspaces,
-    save_last_workspace, get_hardware_info, find_active_claude_processes,
+    save_last_workspace, write_openclaw_workspace_path,
+    get_hardware_info, find_active_claude_processes,
     detect_openclaw_models, find_openclaw_config_path, update_openclaw_config,
     find_openclaw_binary, open_browser, is_windows,
 )
@@ -203,6 +204,183 @@ async def check_workspace_path(path: str) -> JSONResponse:
     })
 
 
+@app.get("/api/workspace-agents")
+async def get_workspace_agents(path: str) -> JSONResponse:
+    """
+    Parses AGENTS.md in the given workspace path and returns a list of
+    configured agents: [{role, role_label, character, model}]
+    """
+    import re as _re
+    target = Path(path)
+    agents_file = target / "AGENTS.md"
+    if not agents_file.exists():
+        return JSONResponse({"agents": []})
+
+    try:
+        content = agents_file.read_text(encoding="utf-8")
+    except Exception:
+        return JSONResponse({"agents": []})
+
+    # Split into per-agent sections at "### " headers
+    sections = _re.split(r'^### ', content, flags=_re.MULTILINE)
+    agents = []
+    for section in sections[1:]:
+        lines = section.strip().split('\n')
+        role_label = lines[0].strip()
+        char_match = _re.search(r'\*\*Character:\*\*\s*(.+)', section)
+        model_match = _re.search(r'\*\*Model:\*\*\s*(.+)', section)
+        character = char_match.group(1).strip() if char_match else '—'
+        model = model_match.group(1).strip() if model_match else '—'
+        # Derive role key from label (reverse of ROLE_LABELS)
+        role_label_map = {
+            "Project Manager": "pm", "System Architect": "architect",
+            "Builder / Developer": "builder", "QA / Test Engineer": "qa",
+            "Security Engineer": "security", "DevOps / Release": "devops",
+            "UX / Documentation": "ux", "Research Agent": "research",
+        }
+        role = role_label_map.get(role_label, role_label.lower().split()[0])
+        agents.append({"role": role, "role_label": role_label, "character": character, "model": model})
+
+    return JSONResponse({"agents": agents})
+
+
+@app.post("/api/workspace-agents/delete")
+async def delete_workspace_agent(body: dict) -> JSONResponse:
+    """
+    Removes a single agent from the workspace AGENTS.md and its
+    ~/.openclaw/agents/{role}/ registration directory.
+    """
+    import re as _re, shutil as _shutil
+    path = body.get("path", "")
+    role = body.get("role", "")
+    if not path or not role:
+        return JSONResponse({"ok": False, "error": "path and role required"}, status_code=400)
+
+    agents_file = Path(path) / "AGENTS.md"
+    if not agents_file.exists():
+        return JSONResponse({"ok": False, "error": "AGENTS.md not found"}, status_code=404)
+
+    try:
+        content = agents_file.read_text(encoding="utf-8")
+        # Remove the section for this agent — from its ### header to the next ###
+        role_label_map = {
+            "pm": "Project Manager", "architect": "System Architect",
+            "builder": "Builder / Developer", "qa": "QA / Test Engineer",
+            "security": "Security Engineer", "devops": "DevOps / Release",
+            "ux": "UX / Documentation", "research": "Research Agent",
+        }
+        label = role_label_map.get(role, role.upper())
+        # Remove block: ### {label}\n ... up to next ### or end of file
+        pattern = _re.compile(
+            r'^### ' + _re.escape(label) + r'\n.*?(?=^### |\Z)',
+            _re.MULTILINE | _re.DOTALL,
+        )
+        new_content = pattern.sub('', content)
+        agents_file.write_text(new_content, encoding="utf-8")
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+    # Also remove the OpenClaw agent registration directory
+    openclaw_agent_dir = Path.home() / ".openclaw" / "agents" / role
+    if openclaw_agent_dir.exists():
+        try:
+            _shutil.rmtree(openclaw_agent_dir)
+        except Exception:
+            pass  # Non-critical
+
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/openclaw-workspace")
+async def get_openclaw_workspace() -> JSONResponse:
+    """
+    Returns OpenClaw's configured workspace path (from ~/.openclaw/config.json)
+    and whether it matches Mission Control's last installed workspace.
+    """
+    import json as _json
+    openclaw_config = Path.home() / ".openclaw" / "config.json"
+    oc_workspace = None
+    if openclaw_config.exists():
+        try:
+            data = _json.loads(openclaw_config.read_text(encoding="utf-8"))
+            oc_workspace = data.get("workspace") or data.get("workspaceDirectory") or data.get("projectDirectory")
+        except Exception:
+            pass
+
+    mc_config = Path.home() / ".openclaw-mission-control.json"
+    mc_workspace = None
+    if mc_config.exists():
+        try:
+            data = _json.loads(mc_config.read_text(encoding="utf-8"))
+            mc_workspace = data.get("last_workspace")
+        except Exception:
+            pass
+
+    match = (oc_workspace and mc_workspace and
+             str(Path(oc_workspace).resolve()) == str(Path(mc_workspace).resolve()))
+
+    return JSONResponse({
+        "openclaw_workspace": oc_workspace,
+        "mc_workspace": mc_workspace,
+        "match": match,
+    })
+
+
+@app.post("/api/reregister-agents")
+async def reregister_agents(body: dict) -> JSONResponse:
+    """
+    Re-runs OpenClaw agent registration for all agents in the given workspace.
+    Reads AGENTS.md to get the current agent list, then rewrites IDENTITY.md files.
+    """
+    import re as _re
+    path = body.get("path", "")
+    if not path:
+        return JSONResponse({"ok": False, "error": "path required"}, status_code=400)
+
+    agents_file = Path(path) / "AGENTS.md"
+    if not agents_file.exists():
+        return JSONResponse({"ok": False, "error": "AGENTS.md not found"}, status_code=404)
+
+    try:
+        from openclaw.installer.agent_registrar import register_openclaw_agents
+        # Parse agents from AGENTS.md
+        content = agents_file.read_text(encoding="utf-8")
+        sections = _re.split(r'^### ', content, flags=_re.MULTILINE)
+        agents = []
+        role_label_map = {
+            "Project Manager": "pm", "System Architect": "architect",
+            "Builder / Developer": "builder", "QA / Test Engineer": "qa",
+            "Security Engineer": "security", "DevOps / Release": "devops",
+            "UX / Documentation": "ux", "Research Agent": "research",
+        }
+        for section in sections[1:]:
+            lines = section.strip().split('\n')
+            role_label = lines[0].strip()
+            char_match = _re.search(r'\*\*Character:\*\*\s*(.+)', section)
+            model_match = _re.search(r'\*\*Model:\*\*\s*(.+)', section)
+            phil_match = _re.search(r'\*\*Philosophy:\*\*\s*(.+)', section)
+            role = role_label_map.get(role_label, role_label.lower().split()[0])
+            agents.append({
+                "role": role,
+                "role_label": role_label,
+                "character": char_match.group(1).strip() if char_match else role_label,
+                "model": model_match.group(1).strip() if model_match else "claude-sonnet-4-6",
+                "philosophy": phil_match.group(1).strip() if phil_match else "",
+                "decision_style": "",
+                "workspace_path": path,
+            })
+
+        created = register_openclaw_agents(agents)
+
+        # Also write the workspace path to OpenClaw config
+        from openclaw.platform_utils import write_openclaw_workspace_path
+        write_openclaw_workspace_path(Path(path))
+
+        return JSONResponse({"ok": True, "registered": len(agents), "files": created})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @app.post("/api/install")
 async def run_install(body: dict) -> JSONResponse:
     from openclaw.installer.workspace_builder import build_layout, create_workspace, write_agent_launchers
@@ -269,6 +447,7 @@ async def run_install(body: dict) -> JSONResponse:
         # Store workspace path for monitor startup
         _installer_context["last_installed_path"] = str(target)
         save_last_workspace(target)
+        write_openclaw_workspace_path(target)  # tell OpenClaw where this workspace lives
 
         return JSONResponse({
             "ok": True,

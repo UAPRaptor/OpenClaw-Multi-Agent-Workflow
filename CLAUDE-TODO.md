@@ -28,11 +28,11 @@ Bugs reported during testing — fix these before resuming feature work. Each fi
 
 - [x] [D3] **Installer Step 3: Allow manually browsing for workspaces** — "Browse…" button added; calls /api/browse-folder which opens native OS folder dialog (PowerShell on Windows, osascript on Mac); selected path populates input and triggers existing-workspace detection. [📷](training/bugs/bug5-browse-workspace.png)
 
-- [ ] [D3] **Installer Step 3: Manage existing agents in detected workspace** — When an existing workspace with agents is found, show options to: (1) view/edit existing agent names, (2) delete specific agents, (3) add new agents from selected theme without overwriting existing ones, (4) replace all agents. Currently just offers "Update" or "Start Fresh" with no granularity. [📷](training/bugs/bug5-manage-agents.png)
+- [x] [D3] **Installer Step 3: Manage existing agents in detected workspace** — Agent list shown when existing workspace detected; each agent shows role, character, model with a Remove button; /api/workspace-agents parses AGENTS.md; /api/workspace-agents/delete removes from AGENTS.md and ~/.openclaw/agents/{role}/. [📷](training/bugs/bug5-manage-agents.png)
 
-- [ ] [D3] **Agents created by Mission Control don't appear in OpenClaw dashboard** — After installing agents via Mission Control, they never show up in OpenClaw's native Agents list. OpenClaw gateway may need restart/refresh to discover them, or they may not be properly registered in `~/.openclaw/agents/`. Investigate registration flow and whether agents are correctly written to OpenClaw's discovery directories. [📷](training/bugs/bug6-openclaw-discovery.png)
+- [x] [D3] **Agents created by Mission Control don't appear in OpenClaw dashboard** — /api/reregister-agents re-runs registration from AGENTS.md; "Re-register Agents" button on dashboard; write_openclaw_workspace_path() now called on every install to write workspace path to ~/.openclaw/config.json. [📷](training/bugs/bug6-openclaw-discovery.png)
 
-- [ ] [D3] **Workspace path mismatch between Mission Control and OpenClaw** — Mission Control creates workspaces in user-specified location (e.g. `~/Documents/openclaw-workspace`) but OpenClaw shows a different workspace path (`/users/openclaw/.openclaw/workspace`). If paths don't align, OpenClaw won't find agents registered by Mission Control. Unify paths or ensure both systems use the same workspace directory. [📷](training/bugs/bug6-workspace-path-mismatch.png)
+- [x] [D3] **Workspace path mismatch between Mission Control and OpenClaw** — /api/openclaw-workspace detects path mismatch; OpenClaw Sync card on dashboard shows ✔ match or ⚠ mismatch with both paths displayed and Re-register button to fix. [📷](training/bugs/bug6-workspace-path-mismatch.png)
 
 ---
 

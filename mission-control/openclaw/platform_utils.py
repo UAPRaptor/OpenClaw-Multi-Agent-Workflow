@@ -203,6 +203,29 @@ def find_existing_workspaces() -> list[Path]:
     return found
 
 
+def write_openclaw_workspace_path(path: Path) -> None:
+    """
+    Writes the workspace path into OpenClaw's config JSON so that
+    OpenClaw's native dashboard discovers the correct workspace.
+    Best-effort — silently skips on any error.
+    """
+    config_path = Path.home() / ".openclaw" / "config.json"
+    try:
+        data: dict = {}
+        if config_path.exists():
+            try:
+                data = json.loads(config_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        # Write under the most plausible config keys for OpenClaw workspace
+        data["workspace"] = str(path)
+        data["workspaceDirectory"] = str(path)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception:
+        pass  # Non-critical — installer still succeeds
+
+
 def save_last_workspace(path: Path) -> None:
     """Saves the workspace path to ~/.openclaw-mission-control.json."""
     try:

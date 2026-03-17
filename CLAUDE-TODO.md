@@ -102,6 +102,17 @@ Used `openclaw agent --json --session-id` subprocess instead of WebSocket proxyi
 - [x] [D3] Session tracking — sessionId stored per-agent in browser JS (`_chatSessions`); `DELETE /api/chat/session/{agentId}` endpoint; "↺ New Chat" button clears session
 - [x] [D2] Chat panel UI — slide-up modal with full message history, typing indicator, Enter-to-send, auto-resize textarea, model tag per response
 - [x] [D2] Gateway health check — gateway status bar (v0.3.3+) already shows running/stopped with green/red indicator
+- [x] [D2] Restart MC button — ↺ Restart MC in gateway bar, auto-reloads browser after recovery (v0.4.1)
+
+---
+
+### v0.4.x — Agent Communication + Identity (in progress)
+
+- [x] [D3] Agent-to-agent spawning — subagents.allowAgents on all agents; any agent can now spawn any other (v0.4.3)
+- [x] [D2] Correct agent identity names — identity.name in openclaw.json; gateway uses Splinter/Donatello/etc. not "Sensei" (v0.4.3)
+- [ ] [D2] "New Chat" button clears browser state but doesn't reset server-side session — add DELETE /api/chat/session/{agentId} wired to a server-side session reset so fresh chats truly start clean
+- [ ] [D2] GitHub push — sensei-crab SSH key lacks write access to UAPRaptor/OpenClaw-Multi-Agent-Workflow; add sensei-crab as collaborator or switch to UAPRaptor credentials
+- [ ] [D3] SSE streaming — openclaw agent runs synchronously; no token stream yet; future: intercept gateway WebSocket events if scope issue is resolved
 
 ---
 
@@ -174,3 +185,6 @@ Standalone binaries and polished docs. Production-ready release.
 | 2026-03-16 | v0.3.2 — Fix: Remove broken openclaw start; add proper Set as Main feature (PUT /api/agents/set-main/{role}) to promote agents to primary chat entrypoint. Replace Start button with Chat/Verify/Set-as-Main actions. Update launchers to use valid openclaw agent command. |
 | 2026-03-16 | v0.3.3 — Feature: Gateway control bar below header with status indicator (green/red/yellow) and buttons for start/stop/restart/refresh. All gateway lifecycle operations now available from UI. Auto-polls every 5 seconds. Restart banner shows after config changes. |
 | 2026-03-16 | v0.4.0 — Feature: Embedded agent chat panel in Mission Control. POST /api/chat/send uses openclaw agent --json subprocess with session continuity (--session-id). DELETE /api/chat/session/{agentId} to reset. Slide-up chat modal with message history, typing indicator, Enter-to-send, model tag. Reverse-engineered OpenClaw gateway WebSocket protocol (RPC over WS, cli client mode works, operator.read scope blocked by token config). |
+| 2026-03-17 | v0.4.1 — Fix: Request import missing in server.py (causing 422 on all chat calls). Add POST /api/server/restart with venv-safe spawn + os._exit(0). Add ↺ Restart MC button to gateway bar with browser auto-reload. |
+| 2026-03-17 | v0.4.2 — Fix: Strip markdown bold from character names in agent_state_reader.py (** Splinter → Splinter). Chat panel and session continuity confirmed working end-to-end. Known-good milestone. |
+| 2026-03-17 | v0.4.3 — Fix: Agent-to-agent spawning: add subagents.allowAgents to all agents in openclaw.json so any agent can spawn any other. Add agentDir and identity.name to each agent entry so gateway uses correct character name (Splinter not Sensei). Update agent_registrar.py to write all three fields at install time. Add neutral workspace IDENTITY.md.template. |

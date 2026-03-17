@@ -236,7 +236,7 @@ def parse_agent_characters(workspace_root: Path) -> dict:
                 current_role = key
                 break
         if current_role and line.startswith("**Character:**"):
-            char = line.split(":", 1)[1].strip()
+            char = line.split(":", 1)[1].strip().strip("*").strip()
             characters[current_role] = char
             current_role = None
 

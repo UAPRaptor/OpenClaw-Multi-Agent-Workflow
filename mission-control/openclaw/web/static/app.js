@@ -154,6 +154,28 @@ function startGatewayPolling() {
   _gwPollTimer = setInterval(refreshGatewayStatus, 5000);
 }
 
+async function restartMissionControl() {
+  if (!confirm('Restart Mission Control server? The page will reload automatically when it comes back up.')) return;
+  const btn = document.getElementById('mcBtnRestart');
+  btn.disabled = true;
+  btn.textContent = '↺ Restarting…';
+  try {
+    await fetch('/api/server/restart', { method: 'POST' });
+  } catch (_) {
+    // Expected — server drops the connection during restart
+  }
+  // Poll until server responds again, then reload
+  const poll = setInterval(async () => {
+    try {
+      const r = await fetch('/api/version');
+      if (r.ok) {
+        clearInterval(poll);
+        location.reload();
+      }
+    } catch (_) { /* still restarting */ }
+  }, 1000);
+}
+
 // ── Render ─────────────────────────────────────────────────────────────────
 
 function render(state) {

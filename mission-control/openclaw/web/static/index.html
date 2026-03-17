@@ -146,6 +146,7 @@
     .gw-btn:disabled { opacity: 0.35; cursor: not-allowed; }
     .gw-btn-danger { color: var(--red); }
     .gw-btn-ghost { background: transparent; border-color: transparent; }
+    .gw-divider { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
     .gateway-banner {
       background: rgba(210,153,34,0.12); border-bottom: 1px solid rgba(210,153,34,0.3);
       padding: 8px 24px; font-size: 12px; display: flex; align-items: center; gap: 12px;
@@ -289,6 +290,8 @@
       <button id="gwBtnStop" class="gw-btn gw-btn-danger" onclick="gatewayAction('stop')">Stop</button>
       <button id="gwBtnRestart" class="gw-btn" onclick="gatewayAction('restart')">Restart</button>
       <button id="gwBtnRefresh" class="gw-btn gw-btn-ghost" onclick="refreshGatewayStatus()">↻</button>
+      <span class="gw-divider"></span>
+      <button id="mcBtnRestart" class="gw-btn gw-btn-ghost" onclick="restartMissionControl()" title="Restart Mission Control server">↺ Restart MC</button>
     </div>
   </div>
 

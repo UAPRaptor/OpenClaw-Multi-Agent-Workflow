@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -1153,6 +1153,35 @@ async def restart_gateway() -> JSONResponse:
             "stdout": "",
             "stderr": str(e),
         }, status_code=500)
+
+
+@app.post("/api/server/restart")
+async def restart_server() -> JSONResponse:
+    """
+    Restarts the Mission Control server process by re-execing itself.
+    The response is sent before the process replaces itself.
+    """
+    import threading
+
+    # Resolve the venv Python: prefer the one next to sys.executable,
+    # then fall back to sys.executable itself.
+    _server_dir = Path(__file__).parent.parent.parent  # mission-control/
+    _venv_python = _server_dir / ".venv" / "bin" / "python"
+    python_bin = str(_venv_python) if _venv_python.exists() else sys.executable
+
+    def _do_restart():
+        import time, subprocess
+        time.sleep(0.5)
+        subprocess.Popen(
+            [python_bin, "-m", "openclaw", "monitor"],
+            cwd=str(_server_dir),
+            start_new_session=True,
+        )
+        os._exit(0)
+
+    t = threading.Thread(target=_do_restart, daemon=True)
+    t.start()
+    return JSONResponse({"ok": True, "message": "Mission Control restarting..."})
 
 
 @app.post("/api/gateway/open-chat")

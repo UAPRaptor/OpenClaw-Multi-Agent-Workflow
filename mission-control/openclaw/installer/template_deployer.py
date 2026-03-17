@@ -245,6 +245,7 @@ def deploy_workspace_files(
         "USER.md.template":      workspace_root / "USER.md",
         "MEMORY.md.template":    workspace_root / "MEMORY.md",
         "HEARTBEAT.md.template": workspace_root / "HEARTBEAT.md",
+        "IDENTITY.md.template":  workspace_root / "IDENTITY.md",
     }
 
     for template_name, dest_path in templates.items():

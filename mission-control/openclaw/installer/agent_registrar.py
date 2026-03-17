@@ -63,17 +63,19 @@ def register_openclaw_agents(agents: list[dict]) -> list[str]:
         agent_ids.append(role)
 
     # Register agents in openclaw.json so they appear in OpenClaw agents list
-    _register_agents_in_config(agent_ids, workspace_path)
+    _register_agents_in_config(agent_ids, workspace_path, agents)
 
     return created
 
 
-def _register_agents_in_config(agent_ids: list[str], workspace_path: str | None = None) -> bool:
+def _register_agents_in_config(agent_ids: list[str], workspace_path: str | None = None, agents: list[dict] | None = None) -> bool:
     """
     Adds agents to openclaw.json's agents.list so they appear in the
     OpenClaw agents list and become available for chat.
 
     If workspace_path is provided, uses it; otherwise falls back to the default.
+    If agents list is provided, writes identity.name so the gateway uses the
+    correct character name instead of the default "Sensei".
     Returns True if successful, False otherwise.
     """
     config_path = Path.home() / ".openclaw" / "openclaw.json"
@@ -95,18 +97,34 @@ def _register_agents_in_config(agent_ids: list[str], workspace_path: str | None 
         if "list" not in data["agents"]:
             data["agents"]["list"] = []
 
+        # Build character name lookup from agents list (role -> character)
+        char_map = {a["role"]: a.get("character", "") for a in (agents or [])}
+
         # Add each agent (skip if already exists)
+        openclaw_agents_base = str(Path.home() / ".openclaw" / "agents")
         for agent_id in agent_ids:
-            # Check if agent already in list
             existing = [a for a in data["agents"]["list"] if a.get("id") == agent_id]
             if existing:
                 continue
-
-            # Add agent entry
-            data["agents"]["list"].append({
+            entry: dict = {
                 "id": agent_id,
                 "workspace": workspace_path,
-            })
+                "agentDir": f"{openclaw_agents_base}/{agent_id}/agent",
+            }
+            if char_map.get(agent_id):
+                entry["identity"] = {"name": char_map[agent_id]}
+            data["agents"]["list"].append(entry)
+
+        # Set subagents.allowAgents on every agent so agents can spawn each other.
+        # Each agent gets access to all OTHER agents in the full list.
+        all_ids = [a.get("id") for a in data["agents"]["list"] if a.get("id")]
+        for agent in data["agents"]["list"]:
+            agent_id = agent.get("id")
+            if not agent_id:
+                continue
+            others = [aid for aid in all_ids if aid != agent_id]
+            if others:
+                agent.setdefault("subagents", {})["allowAgents"] = others
 
         # Write back to config
         config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")

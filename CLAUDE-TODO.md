@@ -111,7 +111,7 @@ Used `openclaw agent --json --session-id` subprocess instead of WebSocket proxyi
 - [x] [D3] Agent-to-agent spawning — subagents.allowAgents on all agents; any agent can now spawn any other (v0.4.3)
 - [x] [D2] Correct agent identity names — identity.name in openclaw.json; gateway uses Splinter/Donatello/etc. not "Sensei" (v0.4.3)
 - [ ] [D2] "New Chat" button clears browser state but doesn't reset server-side session — add DELETE /api/chat/session/{agentId} wired to a server-side session reset so fresh chats truly start clean
-- [ ] [D2] GitHub push — sensei-crab SSH key lacks write access to UAPRaptor/OpenClaw-Multi-Agent-Workflow; add sensei-crab as collaborator or switch to UAPRaptor credentials
+- [x] [D2] GitHub push — sensei-crab added as collaborator on UAPRaptor/OpenClaw-Multi-Agent-Workflow; invitation accepted via API; all 17 pending commits pushed to origin/master
 - [ ] [D3] SSE streaming — openclaw agent runs synchronously; no token stream yet; future: intercept gateway WebSocket events if scope issue is resolved
 
 ---

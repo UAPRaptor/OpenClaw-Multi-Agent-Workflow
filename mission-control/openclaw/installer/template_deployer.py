@@ -63,7 +63,11 @@ ROLE_RESPONSIBILITIES = {
         "Validate builds against acceptance criteria",
         "Write and run tests",
         "Detect regressions",
-        "Create bug tickets",
+        "Create bug tickets with reproduction steps",
+        "Review code for correctness, safety, and edge cases",
+        "Verify API endpoints return correct responses and handle errors",
+        "Run functional tests with both valid and invalid inputs",
+        "Sign off on milestones before handoff to devops",
     ],
     "security": [
         "Audit code for vulnerabilities",
@@ -95,7 +99,7 @@ ROLE_OUTPUTS = {
     "pm": ["spec.md", "milestones.md", "status.md", "overnight-report.md"],
     "architect": ["implementation-plan.md", "architecture.md"],
     "builder": ["source code", "build artifacts", "commit notes"],
-    "qa": ["bug tickets", "test reports"],
+    "qa": ["bug tickets (in tickets/open/ with status, severity, reproduction steps)", "test reports", "QA sign-off on milestones"],
     "security": ["security-review.md", "vulnerability tickets"],
     "devops": ["build packages", "deployment scripts", "release notes"],
     "ux": ["ui-wireframes.md", "design-system.md", "product docs"],
@@ -150,6 +154,209 @@ ROLE_START_CONDITIONS = {
     ],
 }
 
+ROLE_METHODOLOGY = {
+    "qa": """### 1. Orientation (every session)
+- Read `AGENT-SESSION-LOG.md` — what changed recently?
+- Run `git log --oneline -20` in the project repo — what commits are new?
+- Run `git diff HEAD~5 --stat` — which files changed?
+- Read `CLAUDE-TODO.md` — what's the current roadmap state?
+
+### 2. Code Review Checklist
+For each changed file, check:
+
+**Correctness**
+- Does the code do what the commit message says?
+- Are there off-by-one errors, missing null checks, or unhandled edge cases?
+- Do new functions have correct return types and values?
+
+**Input Validation**
+- Are API endpoint parameters validated before use?
+- Are file paths checked for traversal (`..`, absolute paths outside workspace)?
+- Are subprocess arguments sanitized (no shell injection via string interpolation)?
+
+**Error Handling**
+- Do try/except blocks catch specific exceptions (not bare `except`)?
+- Do API endpoints return appropriate HTTP status codes?
+- Are error messages informative without leaking internal details?
+
+**State & Concurrency**
+- Are shared data structures (dicts, lists) accessed safely?
+- Could WebSocket broadcasts race with state updates?
+- Are file reads/writes atomic or properly sequenced?
+
+**Frontend**
+- Is user input escaped before insertion into HTML (XSS)?
+- Do fetch() calls handle non-200 responses?
+- Are event handlers properly cleaned up?
+
+### 3. Functional Testing
+Start the server and test API endpoints with curl. Test both valid and invalid inputs.
+Check that error responses have appropriate status codes and messages.
+
+### 4. Bug Ticket Format
+When you find an issue, create a ticket file in `tickets/open/`:
+
+```markdown
+# BUG-XXX: [Short description]
+
+**Status:** proposed
+**Severity:** D1-D5
+**Found by:** [Your character name] (QA)
+**Date:** [today]
+
+## Description
+[What is wrong]
+
+## Reproduction Steps
+1. [Step 1]
+2. [Step 2]
+
+## Expected Behavior
+[What should happen]
+
+## Actual Behavior
+[What actually happens]
+
+## Suggested Fix
+[If obvious, suggest the fix]
+```
+
+### 5. Sign-off
+When a milestone passes QA:
+- Update `status.md` with QA pass
+- Add row to `HANDOFF.md` passing to devops
+- Log session in `AGENT-SESSION-LOG.md`""",
+
+    "security": """### 1. Orientation (every session)
+- Read `AGENT-SESSION-LOG.md` — what changed recently?
+- Run `git log --oneline -20` in the project repo — what commits are new?
+- Run `git diff HEAD~5 --stat` — which files changed?
+- Focus on files that handle: user input, file I/O, subprocess calls, network requests, authentication
+
+### 2. Security Review Checklist
+
+**Injection**
+- Command injection: are subprocess calls using shell=True or string interpolation?
+- Path traversal: are file paths validated against a whitelist or base directory?
+- Template injection: does user input reach Jinja2 render calls?
+- SQL injection: are database queries parameterized? (if applicable)
+
+**Authentication & Authorization**
+- Are API endpoints protected? Who can access what?
+- Are tokens/keys stored securely (not in plaintext config files)?
+- Are session IDs unpredictable and properly scoped?
+
+**Data Exposure**
+- Do error messages leak internal paths, stack traces, or config details?
+- Does the WebSocket broadcast include sensitive data?
+- Are logs sanitized (no credentials, tokens, or PII)?
+
+**Dependencies**
+- Are there known vulnerabilities in pinned dependency versions?
+- Are dependencies fetched over HTTPS?
+
+**OWASP Agentic Top 10**
+- Excessive agency: can agents perform actions beyond their scope?
+- Prompt injection: can user input manipulate agent behavior?
+- Insecure output handling: are agent responses sanitized before display?
+
+### 3. Vulnerability Report Format
+```markdown
+# VULN-XXX: [Short description]
+
+**Severity:** Critical / High / Medium / Low / Informational
+**Category:** [OWASP category or CWE]
+**Found by:** [Your character name] (Security)
+**Date:** [today]
+
+## Description
+[What the vulnerability is and why it matters]
+
+## Affected Code
+[File path and line numbers]
+
+## Proof of Concept
+[How to exploit it, or why it's exploitable]
+
+## Recommended Fix
+[Specific remediation steps]
+```""",
+
+    "architect": """### 1. Orientation (every session)
+- Read the current spec.md and milestones.md
+- Review `CLAUDE-TODO.md` for roadmap context
+- Run `git log --oneline -20` to understand recent changes
+- Read `AGENT-SESSION-LOG.md` for recent decisions
+
+### 2. Design Process
+- Start from requirements in spec.md — do not invent features
+- Identify components, their boundaries, and data flow
+- Choose the simplest technology that meets the requirements
+- Document trade-offs explicitly: what was considered and why it was rejected
+- Define interfaces between components before internal implementation details
+
+### 3. Implementation Plan Format
+The implementation plan is the primary deliverable. It must be concrete enough
+that the builder can implement without architectural decisions:
+
+```markdown
+# Implementation Plan — [Feature/Milestone Name]
+
+## Components
+[List each component, its responsibility, and its file location]
+
+## Data Flow
+[How data moves through the system — request to response]
+
+## Interfaces
+[Function signatures, API endpoints, data structures]
+
+## Dependencies
+[What libraries/tools are needed and why]
+
+## Implementation Order
+[Which components to build first and why — dependency order]
+
+## Risk Areas
+[What could go wrong and how to mitigate]
+```
+
+### 4. Handoff
+- Write the implementation plan to the project folder
+- Update status.md
+- Add HANDOFF.md row to builder with clear instructions""",
+
+    "builder": """### 1. Orientation (every session)
+- Read the implementation plan from the architect
+- Check `HANDOFF.md` for pending work addressed to builder
+- Read `AGENT-TODO.md` for current backlog
+- Run `git status` and `git log --oneline -10` to understand current state
+
+### 2. Implementation Process
+- Follow the implementation plan — do not deviate from the architecture
+- Build in the order specified by the plan
+- Commit after each logical unit of work (not one giant commit)
+- Write commit messages that explain *why*, not just *what*
+- Test your code before marking it complete
+
+### 3. Code Quality Standards
+- No hardcoded secrets, paths, or credentials
+- Validate inputs at system boundaries
+- Handle errors explicitly — no bare except
+- Keep functions focused — one function, one job
+- Use existing patterns in the codebase — don't invent new conventions
+
+### 4. Build & Test
+- Ensure the code runs without errors before handoff
+- Test the happy path and at least one error path
+- If the project has tests, run them and fix any failures you introduced
+
+### 5. Handoff
+- Commit all changes with clear messages
+- Update status.md with milestone progress
+- Add HANDOFF.md row to QA describing what was built and how to test it""",
+}
+
 
 def load_character_theme(theme: str) -> dict:
     corpus = get_corpus_dir()
@@ -183,6 +390,7 @@ def build_agent_list(roles: list[str], theme_data: dict, model_map: dict, custom
             "receives_from": chain.get("receives_from", "—"),
             "hands_to": chain.get("hands_to", "—"),
             "start_conditions": ROLE_START_CONDITIONS.get(role, []),
+            "methodology": ROLE_METHODOLOGY.get(role, ""),
         })
     return agents
 

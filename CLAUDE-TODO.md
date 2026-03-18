@@ -106,13 +106,15 @@ Used `openclaw agent --json --session-id` subprocess instead of WebSocket proxyi
 
 ---
 
-### v0.4.x — Agent Communication + Identity (in progress)
+### v0.4.x — Agent Communication, Identity & Training (in progress)
 
 - [x] [D3] Agent-to-agent spawning — subagents.allowAgents on all agents; any agent can now spawn any other (v0.4.3)
 - [x] [D2] Correct agent identity names — identity.name in openclaw.json; gateway uses Splinter/Donatello/etc. not "Sensei" (v0.4.3)
 - [x] [D2] "New Chat" button now calls DELETE /api/chat/session/{agentId} which clears server-side session store; server tracks sessionIds per agent and uses them as fallback; fresh chats truly start clean
 - [x] [D2] GitHub push — sensei-crab added as collaborator on UAPRaptor/OpenClaw-Multi-Agent-Workflow; invitation accepted via API; all 17 pending commits pushed to origin/master
-- [ ] [D3] SSE streaming — openclaw agent runs synchronously; no token stream yet; future: intercept gateway WebSocket events if scope issue is resolved
+- [x] [D2] Agent methodology system — ROLE_METHODOLOGY dict in template_deployer.py provides structured step-by-step processes per role; IDENTITY.md.template renders {{ methodology }} section; deployed to all live agents (v0.4.5–v0.4.8)
+- [x] [D2] Agent training feedback loop — grade agent work → identify gaps → update templates (GitHub) + local identities; PM delegation rules, Security "verify don't trust", QA additional test cases all baked in from real task failures
+- [x] [D2] First agent-built feature — System Info card built end-to-end by agent team (Leonardo→Donatello→Raphael→Casey) with security review sign-off (v0.4.8)
 - [ ] [D3] Spawned agent visibility in chat panel — when Splinter (or any agent) spawns subagents, their responses appear in the gateway session system but not in the MC chat panel; subscribe to gateway WebSocket events or poll session activity to show spawned agent messages inline in the chat UI
 
 ---
@@ -189,3 +191,8 @@ Standalone binaries and polished docs. Production-ready release.
 | 2026-03-17 | v0.4.1 — Fix: Request import missing in server.py (causing 422 on all chat calls). Add POST /api/server/restart with venv-safe spawn + os._exit(0). Add ↺ Restart MC button to gateway bar with browser auto-reload. |
 | 2026-03-17 | v0.4.2 — Fix: Strip markdown bold from character names in agent_state_reader.py (** Splinter → Splinter). Chat panel and session continuity confirmed working end-to-end. Known-good milestone. |
 | 2026-03-17 | v0.4.3 — Fix: Agent-to-agent spawning: add subagents.allowAgents to all agents in openclaw.json so any agent can spawn any other. Add agentDir and identity.name to each agent entry so gateway uses correct character name (Splinter not Sensei). Update agent_registrar.py to write all three fields at install time. Add neutral workspace IDENTITY.md.template. |
+| 2026-03-17 | v0.4.4 — New Chat server-side session reset (DELETE clears _chat_sessions store); Session log viewer (GET /api/session-log, full-width dashboard card); Stale ticket badge (amber warning when in-progress/blocked tickets unchanged >4hr). |
+| 2026-03-17 | v0.4.5 — Agent identity methodology: IDENTITY.md.template supports {{ methodology }} section; ROLE_METHODOLOGY added for QA, Security, Architect, Builder with structured step-by-step processes. Template includes {{ workspace_path }} for project context. |
+| 2026-03-18 | v0.4.6 — Expandable kanban columns: clicking a column reveals ticket titles with stale indicators; read_tickets() returns per-status file details. Fixed Status parsing bug (markdown ** not stripped, causing all ticket counts to read as zero). |
+| 2026-03-18 | v0.4.7 — PM methodology: ROLE_METHODOLOGY for PM with delegation rules (absolute paths, full context in spawn prompts, chain workflow). Root cause fix for agent spawning failure — agents couldn't find files because PM stripped absolute paths. |
+| 2026-03-18 | v0.4.8 — System Info card (built by agent team: Leonardo/Donatello/Raphael, reviewed by Casey). GET /api/sysinfo returns OS, Python, disk usage. Security methodology updated: "verify don't trust" — agents must verify config in code. QA methodology updated: always test invalid routes, JS console, empty data. |

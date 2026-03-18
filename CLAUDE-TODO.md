@@ -121,7 +121,7 @@ Used `openclaw agent --json --session-id` subprocess instead of WebSocket proxyi
 Richer real-time visibility into agent activity.
 
 - [x] [D2] Ticket stale badge — amber warning banner when tickets in `in-progress` or `blocked` > 4 hours (uses file mtime from ticket .md files)
-- [ ] [D2] Click kanban column to expand and show ticket file names
+- [x] [D2] Click kanban column to expand and show ticket file names — clickable columns reveal ticket titles with stale indicators; also fixed Status parsing bug (markdown ** not stripped)
 - [x] [D2] Session log viewer — full-width dashboard card showing 10 most recent AGENT-SESSION-LOG.md entries with Refresh button; GET /api/session-log endpoint parses markdown table
 - [ ] [D2] Installer: show character roster preview when a theme is selected (role → character mapping)
 - [ ] [D3] Milestone completion count for overnight mode (parse overnight-report.md)

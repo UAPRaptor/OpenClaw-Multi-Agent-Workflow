@@ -330,18 +330,37 @@ const TICKET_STATES = ['proposed','ready','in-progress','blocked','qa-failed','f
 
 function renderTickets(tickets) {
   const board = document.getElementById('kanbanBoard');
+  const details = tickets._details || {};
   const stale = tickets._stale || 0;
   board.innerHTML = TICKET_STATES.map(s => {
     const count = tickets[s] || 0;
     const cls = count > 0 ? 'has-items' : '';
+    const items = details[s] || [];
+    const clickable = count > 0 ? ' style="cursor:pointer" onclick="toggleKanbanDetail(this)"' : '';
+    let itemsHtml = '';
+    if (items.length > 0) {
+      itemsHtml = `<div class="kanban-detail" style="display:none;margin-top:6px;font-size:12px;">` +
+        items.map(t => {
+          const staleTag = t.stale ? ' <span style="color:#f5a623;" title="Stale">⚠</span>' : '';
+          return `<div style="padding:2px 0;border-top:1px solid var(--border);color:var(--text-muted);" title="${escHtml(t.file)}">${escHtml(t.title)}${staleTag}</div>`;
+        }).join('') + '</div>';
+    }
     return `
-      <div class="kanban-col">
+      <div class="kanban-col"${clickable}>
         <div class="kanban-col-title">
           <span>${s}</span>
           <span class="kanban-count ${cls}">${count}</span>
         </div>
+        ${itemsHtml}
       </div>`;
   }).join('') + (stale > 0 ? `<div style="grid-column:1/-1;padding:6px 10px;background:#f5a62320;border:1px solid #f5a623;border-radius:6px;font-size:12px;color:#f5a623;margin-top:6px;">⚠ ${stale} ticket${stale > 1 ? 's' : ''} stale (in-progress or blocked &gt; 4 hours)</div>` : '');
+}
+
+function toggleKanbanDetail(col) {
+  const detail = col.querySelector('.kanban-detail');
+  if (detail) {
+    detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
+  }
 }
 
 // ── Activity ───────────────────────────────────────────────────────────────

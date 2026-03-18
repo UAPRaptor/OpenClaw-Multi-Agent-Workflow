@@ -103,6 +103,7 @@ def read_project_status(workspace_root: Path, project_path: str) -> dict:
 
 def read_tickets(workspace_root: Path, project_path: str) -> dict:
     counts = {s: 0 for s in TICKET_STATES}
+    details: dict[str, list[dict]] = {s: [] for s in TICKET_STATES}
     stale = 0  # tickets in-progress or blocked > 4 hours without modification
 
     tickets_open = workspace_root / project_path / "tickets" / "open"
@@ -116,20 +117,33 @@ def read_tickets(workspace_root: Path, project_path: str) -> dict:
             return
         for f in directory.glob("*.md"):
             content = f.read_text(encoding="utf-8", errors="ignore")
+            title = f.stem  # fallback: filename without .md
+            # Try to extract title from first line: # TICKET-ID — Title
+            first_line = content.split("\n", 1)[0].strip()
+            if first_line.startswith("#"):
+                title = first_line.lstrip("# ").strip()
             for line in content.splitlines():
                 if line.startswith("**Status:**"):
-                    status = line.split(":", 1)[1].strip().lower()
+                    status = line.split(":", 1)[1].strip().strip("*").strip().lower()
                     if status in counts:
                         counts[status] += 1
-                    if status in ("in-progress", "blocked"):
-                        age = time.time() - f.stat().st_mtime
-                        if age > stale_threshold:
-                            stale += 1
+                        is_stale = False
+                        if status in ("in-progress", "blocked"):
+                            age = time.time() - f.stat().st_mtime
+                            if age > stale_threshold:
+                                stale += 1
+                                is_stale = True
+                        details[status].append({
+                            "file": f.name,
+                            "title": title,
+                            "stale": is_stale,
+                        })
                     break
 
     count_by_status(tickets_open)
     count_by_status(tickets_closed)
     counts["_stale"] = stale
+    counts["_details"] = details
     return counts
 
 

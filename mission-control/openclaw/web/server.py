@@ -63,6 +63,37 @@ async def dismiss_alert(alert_id: str) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+@app.get("/api/session-log")
+async def session_log() -> JSONResponse:
+    """Returns recent AGENT-SESSION-LOG.md entries for the active project."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    from openclaw.monitor.agent_state_reader import read_active_project
+    active = read_active_project(_workspace_root)
+    if not active:
+        return JSONResponse({"rows": [], "raw": None})
+    log_path = _workspace_root / active["path"] / "AGENT-SESSION-LOG.md"
+    if not log_path.exists():
+        return JSONResponse({"rows": [], "raw": None})
+    content = log_path.read_text(encoding="utf-8", errors="ignore")
+    # Parse markdown table rows (skip header and separator)
+    import re as _re
+    rows = []
+    in_table = False
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("| Date"):
+            in_table = True
+            continue
+        if in_table and stripped.startswith("|---"):
+            continue
+        if in_table and stripped.startswith("|"):
+            cols = [c.strip() for c in stripped.strip("|").split("|")]
+            if len(cols) >= 3:
+                rows.append({"date": cols[0], "agent": cols[1], "items": cols[2]})
+    return JSONResponse({"rows": rows[-20:], "raw": content})
+
+
 @app.get("/api/morning-report")
 async def morning_report() -> JSONResponse:
     if _workspace_root is None:
@@ -1217,7 +1248,8 @@ async def chat_send(request: Request) -> JSONResponse:
     body = await request.json()
     agent_id = str(body.get("agentId", "main")).strip()
     message = str(body.get("message", "")).strip()
-    session_id = body.get("sessionId")  # None = new conversation
+    # Use client-provided sessionId, fall back to server-tracked session
+    session_id = body.get("sessionId") or _chat_sessions.get(agent_id)
 
     if not message:
         return JSONResponse({"ok": False, "error": "Message is required"}, status_code=400)
@@ -1259,6 +1291,8 @@ async def chat_send(request: Request) -> JSONResponse:
         response_text = payloads[0].get("text", "") if payloads else ""
         meta = data.get("result", {}).get("meta", {}).get("agentMeta", {})
         new_session_id = meta.get("sessionId")
+        if new_session_id:
+            _chat_sessions[agent_id] = new_session_id
         model = meta.get("model", "")
         return JSONResponse({
             "ok": True,
@@ -1275,16 +1309,21 @@ async def chat_send(request: Request) -> JSONResponse:
         }, status_code=500)
 
 
+# Server-side session store: { agentId: sessionId }
+_chat_sessions: dict[str, str] = {}
+
+
 @app.delete("/api/chat/session/{agent_id}")
 async def clear_chat_session(agent_id: str) -> JSONResponse:
     """
-    Clears the session state for an agent (instructs the browser to start fresh).
-    The actual session in the gateway is not deleted — just the ID pointer.
+    Clears the server-side session state for an agent so the next chat
+    message starts a fresh conversation (no --session-id passed).
     Returns: {ok, agentId}
     """
     import re as _re
     if not _re.match(r'^[a-zA-Z0-9_-]{1,64}$', agent_id):
         return JSONResponse({"ok": False, "error": "Invalid agentId"}, status_code=400)
+    _chat_sessions.pop(agent_id, None)
     return JSONResponse({"ok": True, "agentId": agent_id})
 
 

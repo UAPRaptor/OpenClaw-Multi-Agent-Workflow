@@ -354,6 +354,17 @@
           </div>
         </div>
 
+        <!-- ── Session Log ── -->
+        <div class="card dashboard-full">
+          <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+            <span>Session Log</span>
+            <button class="btn btn-ghost" style="padding:4px 12px;font-size:12px;" onclick="loadSessionLog()">Refresh</button>
+          </div>
+          <div id="sessionLogBody" style="font-size:13px;color:var(--text-muted);">
+            <p>Loading session log...</p>
+          </div>
+        </div>
+
         <!-- ── Agent Cleanup ── -->
         <div class="card dashboard-full" id="agentCleanupCard" style="display:none">
           <div class="card-title">Agent Cleanup & Orphan Management</div>

@@ -3,6 +3,7 @@ Reads workspace files and infers agent and project state.
 No AI inference — all interpretation is based on file paths and content patterns.
 """
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -102,11 +103,15 @@ def read_project_status(workspace_root: Path, project_path: str) -> dict:
 
 def read_tickets(workspace_root: Path, project_path: str) -> dict:
     counts = {s: 0 for s in TICKET_STATES}
+    stale = 0  # tickets in-progress or blocked > 4 hours without modification
 
     tickets_open = workspace_root / project_path / "tickets" / "open"
     tickets_closed = workspace_root / project_path / "tickets" / "closed"
 
+    stale_threshold = 4 * 3600  # 4 hours in seconds
+
     def count_by_status(directory: Path) -> None:
+        nonlocal stale
         if not directory.exists():
             return
         for f in directory.glob("*.md"):
@@ -116,10 +121,15 @@ def read_tickets(workspace_root: Path, project_path: str) -> dict:
                     status = line.split(":", 1)[1].strip().lower()
                     if status in counts:
                         counts[status] += 1
+                    if status in ("in-progress", "blocked"):
+                        age = time.time() - f.stat().st_mtime
+                        if age > stale_threshold:
+                            stale += 1
                     break
 
     count_by_status(tickets_open)
     count_by_status(tickets_closed)
+    counts["_stale"] = stale
     return counts
 
 

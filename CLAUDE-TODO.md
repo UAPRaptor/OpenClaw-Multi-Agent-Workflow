@@ -110,18 +110,19 @@ Used `openclaw agent --json --session-id` subprocess instead of WebSocket proxyi
 
 - [x] [D3] Agent-to-agent spawning — subagents.allowAgents on all agents; any agent can now spawn any other (v0.4.3)
 - [x] [D2] Correct agent identity names — identity.name in openclaw.json; gateway uses Splinter/Donatello/etc. not "Sensei" (v0.4.3)
-- [ ] [D2] "New Chat" button clears browser state but doesn't reset server-side session — add DELETE /api/chat/session/{agentId} wired to a server-side session reset so fresh chats truly start clean
+- [x] [D2] "New Chat" button now calls DELETE /api/chat/session/{agentId} which clears server-side session store; server tracks sessionIds per agent and uses them as fallback; fresh chats truly start clean
 - [x] [D2] GitHub push — sensei-crab added as collaborator on UAPRaptor/OpenClaw-Multi-Agent-Workflow; invitation accepted via API; all 17 pending commits pushed to origin/master
 - [ ] [D3] SSE streaming — openclaw agent runs synchronously; no token stream yet; future: intercept gateway WebSocket events if scope issue is resolved
+- [ ] [D3] Spawned agent visibility in chat panel — when Splinter (or any agent) spawns subagents, their responses appear in the gateway session system but not in the MC chat panel; subscribe to gateway WebSocket events or poll session activity to show spawned agent messages inline in the chat UI
 
 ---
 
 ### v0.4.0 — Monitor & Dashboard Improvements
 Richer real-time visibility into agent activity.
 
-- [ ] [D2] Ticket stale badge — highlight tickets in `in-progress` or `blocked` > 4 hours
+- [x] [D2] Ticket stale badge — amber warning banner when tickets in `in-progress` or `blocked` > 4 hours (uses file mtime from ticket .md files)
 - [ ] [D2] Click kanban column to expand and show ticket file names
-- [ ] [D2] Session log viewer — show recent AGENT-SESSION-LOG.md entries per agent in dashboard
+- [x] [D2] Session log viewer — full-width dashboard card showing 10 most recent AGENT-SESSION-LOG.md entries with Refresh button; GET /api/session-log endpoint parses markdown table
 - [ ] [D2] Installer: show character roster preview when a theme is selected (role → character mapping)
 - [ ] [D3] Milestone completion count for overnight mode (parse overnight-report.md)
 - [ ] [D3] Multi-workspace support — monitor more than one workspace simultaneously

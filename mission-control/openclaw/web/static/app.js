@@ -330,10 +330,10 @@ const TICKET_STATES = ['proposed','ready','in-progress','blocked','qa-failed','f
 
 function renderTickets(tickets) {
   const board = document.getElementById('kanbanBoard');
+  const stale = tickets._stale || 0;
   board.innerHTML = TICKET_STATES.map(s => {
     const count = tickets[s] || 0;
     const cls = count > 0 ? 'has-items' : '';
-    const colClass = s === 'blocked' || s === 'qa-failed' ? 'badge-red' : '';
     return `
       <div class="kanban-col">
         <div class="kanban-col-title">
@@ -341,7 +341,7 @@ function renderTickets(tickets) {
           <span class="kanban-count ${cls}">${count}</span>
         </div>
       </div>`;
-  }).join('');
+  }).join('') + (stale > 0 ? `<div style="grid-column:1/-1;padding:6px 10px;background:#f5a62320;border:1px solid #f5a623;border-radius:6px;font-size:12px;color:#f5a623;margin-top:6px;">⚠ ${stale} ticket${stale > 1 ? 's' : ''} stale (in-progress or blocked &gt; 4 hours)</div>` : '');
 }
 
 // ── Activity ───────────────────────────────────────────────────────────────
@@ -393,6 +393,42 @@ async function loadReport() {
 
 function closeReport() {
   document.getElementById('morning-report-modal').style.display = 'none';
+}
+
+// ── Session Log ───────────────────────────────────────────────────────────
+
+async function loadSessionLog() {
+  const body = document.getElementById('sessionLogBody');
+  body.innerHTML = '<p style="color:var(--text-muted);font-size:13px">Loading...</p>';
+  try {
+    const res = await fetch('/api/session-log');
+    const data = await res.json();
+    if (!data.rows || data.rows.length === 0) {
+      body.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No session log entries yet.</p>';
+      return;
+    }
+    // Show most recent entries first (reversed), limit to 10
+    const rows = data.rows.slice().reverse().slice(0, 10);
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+    html += '<tr style="border-bottom:1px solid var(--border);text-align:left;">';
+    html += '<th style="padding:4px 8px;width:90px;">Date</th>';
+    html += '<th style="padding:4px 8px;width:100px;">Agent</th>';
+    html += '<th style="padding:4px 8px;">Items Completed</th></tr>';
+    for (const r of rows) {
+      html += '<tr style="border-bottom:1px solid var(--border);">';
+      html += `<td style="padding:4px 8px;white-space:nowrap;color:var(--text-muted);">${escHtml(r.date)}</td>`;
+      html += `<td style="padding:4px 8px;white-space:nowrap;">${escHtml(r.agent)}</td>`;
+      html += `<td style="padding:4px 8px;">${escHtml(r.items)}</td>`;
+      html += '</tr>';
+    }
+    html += '</table>';
+    if (data.rows.length > 10) {
+      html += `<p style="color:var(--text-muted);font-size:12px;margin-top:6px;">${data.rows.length - 10} older entries not shown</p>`;
+    }
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = '<p style="color:var(--text-muted);font-size:13px">Could not load session log.</p>';
+  }
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────
@@ -632,8 +668,12 @@ function closeChatModal(e) {
   document.getElementById('chatModalOverlay').classList.remove('open');
 }
 
-function newChatSession() {
+async function newChatSession() {
   if (!_chatAgent) return;
+  // Notify server to clear session state
+  try {
+    await fetch(`/api/chat/session/${encodeURIComponent(_chatAgent)}`, { method: 'DELETE' });
+  } catch (_) { /* best-effort */ }
   _chatSessions[_chatAgent] = null;
   _chatHistory[_chatAgent] = [];
   _renderChatHistory();
@@ -845,4 +885,5 @@ fetch('/api/state')
 connect();
 checkOpenclawSync();
 loadAgentRegistry();
+loadSessionLog();
 startGatewayPolling();

@@ -255,6 +255,13 @@ For each changed file, check:
 Start the server and test API endpoints with curl. Test both valid and invalid inputs.
 Check that error responses have appropriate status codes and messages.
 
+**Always test these additional cases:**
+- Hit the endpoint with invalid/missing parameters — confirm proper error codes (400/404/422)
+- Hit non-existent routes — confirm 404 not 500
+- Check the browser JS console for errors after loading the dashboard
+- If a UI element was added, verify it renders with real data AND with missing/empty data
+- Test with the server stopped — do fetch() calls handle connection failures gracefully?
+
 ### 4. Bug Ticket Format
 When you find an issue, create a ticket file in `tickets/open/`:
 
@@ -295,7 +302,21 @@ When a milestone passes QA:
 - Run `git diff HEAD~5 --stat` — which files changed?
 - Focus on files that handle: user input, file I/O, subprocess calls, network requests, authentication
 
-### 2. Security Review Checklist
+### 2. Verify, Don't Trust
+
+**CRITICAL: Never trust assumptions about configuration — verify them in the code.**
+If a security property is claimed (e.g. "server binds to localhost only"), find the actual
+bind call in the code and confirm it. Check for:
+- Server bind address: search for `host=` in uvicorn/FastAPI startup code
+- Environment variable overrides that could change bind address
+- Config files that might override defaults
+- Proxy headers or CORS settings that could expose internal endpoints
+
+When reporting findings, cite the specific file and line number that confirms or
+contradicts a security assumption. "Intended to be localhost-only" is not evidence —
+`uvicorn.run(app, host="127.0.0.1")` at server.py:1450 is evidence.
+
+### 3. Security Review Checklist
 
 **Injection**
 - Command injection: are subprocess calls using shell=True or string interpolation?
@@ -322,7 +343,7 @@ When a milestone passes QA:
 - Prompt injection: can user input manipulate agent behavior?
 - Insecure output handling: are agent responses sanitized before display?
 
-### 3. Vulnerability Report Format
+### 4. Vulnerability Report Format
 ```markdown
 # VULN-XXX: [Short description]
 

@@ -7,6 +7,8 @@ import asyncio
 import json
 import os
 import sys
+import platform
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +48,24 @@ def _static_dir() -> Path:
 async def get_version() -> JSONResponse:
     from openclaw.platform_utils import get_platform_label
     return JSONResponse({"version": __version__, "platform": get_platform_label()})
+
+
+@app.get("/api/sysinfo")
+async def get_sysinfo() -> JSONResponse:
+    """Returns OS, Python version, and disk usage. Safe only when server is bound
+    to 127.0.0.1 (localhost). If remote access is ever enabled, gate this behind auth."""
+    root = os.path.abspath(os.sep)
+    usage = shutil.disk_usage(root)
+    def _gb(value: int) -> float:
+        return round(value / (1024 ** 3), 1)
+    return JSONResponse({
+        "os": f"{platform.system()} {platform.release()}",
+        "python": sys.version.split()[0],
+        "disk": {
+            "used_gb": _gb(usage.used),
+            "total_gb": _gb(usage.total),
+        },
+    })
 
 
 @app.get("/api/state")

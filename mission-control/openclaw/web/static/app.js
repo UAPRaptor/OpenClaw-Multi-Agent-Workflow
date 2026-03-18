@@ -450,6 +450,34 @@ async function loadSessionLog() {
   }
 }
 
+// ── System Info ────────────────────────────────────────────────────────────
+
+async function loadSysInfo() {
+  const osEl = document.getElementById('sysinfoOs');
+  const pyEl = document.getElementById('sysinfoPython');
+  const diskEl = document.getElementById('sysinfoDisk');
+  if (!osEl || !pyEl || !diskEl) return;
+
+  try {
+    const res = await fetch('/api/sysinfo');
+    if (!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    osEl.textContent = data.os || '—';
+    pyEl.textContent = data.python || '—';
+    const used = data.disk?.used_gb;
+    const total = data.disk?.total_gb;
+    if (typeof used === 'number' && typeof total === 'number') {
+      diskEl.textContent = `${used} / ${total} GB`;
+    } else {
+      diskEl.textContent = '—';
+    }
+  } catch (e) {
+    osEl.textContent = 'Unavailable';
+    pyEl.textContent = 'Unavailable';
+    diskEl.textContent = 'Unavailable';
+  }
+}
+
 // ── Utilities ──────────────────────────────────────────────────────────────
 
 function timeAgo(iso) {
@@ -905,4 +933,5 @@ connect();
 checkOpenclawSync();
 loadAgentRegistry();
 loadSessionLog();
+loadSysInfo();
 startGatewayPolling();

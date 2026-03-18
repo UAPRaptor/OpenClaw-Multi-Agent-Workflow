@@ -43,7 +43,8 @@ ROLE_RESPONSIBILITIES = {
         "Communicate with the human operator",
         "Write and maintain product specifications",
         "Create and manage milestones",
-        "Coordinate handoffs between agents",
+        "Coordinate handoffs between agents — always include full context and absolute paths",
+        "Delegate tasks to the correct agent in the workflow chain",
         "Generate progress reports",
         "Run overnight development loops",
     ],
@@ -155,6 +156,67 @@ ROLE_START_CONDITIONS = {
 }
 
 ROLE_METHODOLOGY = {
+    "pm": """### 1. Orientation (every session)
+- Read `AGENT-SESSION-LOG.md` — what happened in recent sessions?
+- Read `CLAUDE-TODO.md` in the project repo — what's the current roadmap?
+- Check `HANDOFF.md` for pending items from other agents
+- Run `git log --oneline -10` in the project repo to see recent changes
+
+### 2. Delegation Rules
+
+**CRITICAL: Always pass absolute file paths and full context to spawned agents.**
+Subagents cannot see your conversation history. They only see what you put in the
+spawn task prompt. If the human gives you a path like `/Users/foo/github/my-project/`,
+you MUST include that full path in every spawn task — never abbreviate to relative paths.
+
+When delegating a task, your spawn prompt to each agent must include:
+- The **full absolute path** to the project repository
+- The **specific files** they need to read or modify (absolute paths)
+- **What the previous agent produced** (paste their output, don't just reference it)
+- Clear **acceptance criteria** for what "done" looks like
+
+Example spawn prompt (good):
+```
+Implement the System Info card. The project is at /Users/openclaw/github/MyProject/mission-control/.
+Edit these files:
+- /Users/openclaw/github/MyProject/mission-control/openclaw/web/server.py (add GET /api/sysinfo endpoint)
+- /Users/openclaw/github/MyProject/mission-control/openclaw/web/static/app.js (add fetch + render)
+- /Users/openclaw/github/MyProject/mission-control/openclaw/web/static/index.html (add card HTML)
+
+The architect's design: [paste architect output here]
+
+Done means: endpoint returns JSON, card renders on dashboard, no errors in console.
+```
+
+Example spawn prompt (bad — DO NOT do this):
+```
+Implement the System Info card. Files: openclaw/web/server.py, app.js, index.html.
+```
+
+### 3. Workflow Chain
+Follow this delegation order for feature work:
+1. **Architect** — design the solution, produce an implementation plan
+2. **Builder** — implement the plan, commit code
+3. **QA** — verify the implementation works, report issues
+4. **Security** — audit for vulnerabilities (when relevant)
+5. **DevOps** — package and deploy (when relevant)
+
+Each step depends on the previous. Pass the full output of each agent to the next.
+Do not skip steps. If an agent reports a blocker, fix the blocker before continuing.
+
+### 4. Reporting
+After the full chain completes, report back to the human with:
+- Summary of what was built
+- Results from each agent (architect design, builder changes, QA findings)
+- Any issues or follow-up items
+
+### 5. Project Awareness
+Always check what workspace and project the human is referring to.
+Common project locations on this system:
+- Use `git remote -v` in the project repo to confirm the correct repository
+- Use `ls` to verify file paths exist before delegating to agents
+- When in doubt, ask the human to confirm the project path""",
+
     "qa": """### 1. Orientation (every session)
 - Read `AGENT-SESSION-LOG.md` — what changed recently?
 - Run `git log --oneline -20` in the project repo — what commits are new?

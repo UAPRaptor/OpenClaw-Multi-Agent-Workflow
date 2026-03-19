@@ -583,7 +583,7 @@ function selectInstallMode(mode) {
   // Show warnings for destructive modes
   const warn = document.getElementById('installModeWarning');
   if (mode === 'upgrade') {
-    warn.innerHTML = '<strong>Warning:</strong> Upgrade will overwrite workspace config files (AGENTS.md, SOUL.md, TOOLS.md, USER.md, MEMORY.md). Your project files (specs, tickets, builds) are preserved. Agent session logs and TODOs will be reset.';
+    warn.innerHTML = '<strong>Warning:</strong> Upgrade will overwrite workspace config files (AGENTS.md, SOUL.md, TOOLS.md, USER.md). Your project files (specs, tickets, builds), session logs, TODOs, MEMORY.md, and HANDOFF.md are all preserved.';
     warn.classList.remove('section-hidden');
   } else if (mode === 'replace') {
     warn.innerHTML = '<strong>Warning:</strong> Replace will overwrite ALL workspace config files including CLAUDE.md. Your project files (specs, tickets, builds) are preserved, but agent metadata will be reset. Use this only to recover a broken setup.';

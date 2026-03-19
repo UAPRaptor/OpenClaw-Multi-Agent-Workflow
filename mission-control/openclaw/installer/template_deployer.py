@@ -574,7 +574,17 @@ def deploy_workspace_files(
         "IDENTITY.md.template":  workspace_root / "IDENTITY.md",
     }
 
+    # Files to preserve during upgrade — user data that should never be overwritten
+    preserve_on_upgrade = {
+        "MEMORY.md.template",      # Agent session memory
+    }
+
     for template_name, dest_path in templates.items():
+        # In upgrade mode, preserve user data files that already exist
+        if install_mode == "upgrade" and template_name in preserve_on_upgrade:
+            if dest_path.exists():
+                continue
+
         tmpl = env.get_template(template_name)
         rendered = tmpl.render(**context)
         dest_path.write_text(rendered, encoding="utf-8")

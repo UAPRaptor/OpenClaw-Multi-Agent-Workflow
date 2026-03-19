@@ -131,11 +131,22 @@ Richer real-time visibility into agent activity.
 
 ---
 
-### v0.5.0 — Agent Control & Project Management
+### v0.5.x — Project Management & Dashboard Intelligence
 Move from passive monitoring to active control from the dashboard.
 
+**Project Management**
+- [ ] [D2] Move Active Project card above Ticket Board for logical flow
+- [ ] [D2] Add "Change Project" dropdown/button to Active Project card — switch active project without editing files
+- [ ] [D3] Repo management card — list cloned repos with path, last commit, remote URL; add/remove repos from dashboard
 - [ ] [D3] Show ticket content when clicking kanban columns (not just counts)
-- [ ] [D3] Add project management from UI — create/switch active projects without editing files
+- [ ] [D3] Migrate session logs and agent TODOs into ticket board — each log entry or TODO becomes a visible ticket
+
+**Agent Skills & Capabilities**
+- [ ] [D2] Installed Skills card — shows skills/tools available to agents (reads from OpenClaw config or agent capabilities)
+
+**Workspace Safety**
+- [ ] [D3] Workspace backup/restore — "Save Workspace" creates timestamped snapshot in ~/.openclaw-mission-control/backups/; "Restore Workspace" lists snapshots and overwrites current; auto-backup before upgrade/replace install
+- [ ] [D3] Archived workspaces panel — list old/inactive workspaces with restore option
 
 ---
 

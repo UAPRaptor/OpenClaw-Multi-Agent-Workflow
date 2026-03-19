@@ -322,15 +322,21 @@
         </div>
       </div>
 
-      <div class="dashboard">
-        <!-- ── Active Project ── -->
-        <div class="card">
-          <div class="card-title">Active Project</div>
-          <div class="project-banner" id="projectBanner">
-            <p style="color:var(--text-muted);font-size:13px">No project active</p>
-          </div>
+      <!-- ── Active Project (full-width, above ticket board) ── -->
+      <div class="card" style="margin-top:16px;">
+        <div class="card-title">Active Project</div>
+        <div class="project-banner" id="projectBanner">
+          <p style="color:var(--text-muted);font-size:13px">No project active</p>
         </div>
+      </div>
 
+      <!-- ── Ticket Board (full-width, below active project) ── -->
+      <div class="card" style="margin-top:16px;">
+        <div class="card-title">Ticket Board</div>
+        <div class="kanban" id="kanbanBoard"></div>
+      </div>
+
+      <div class="dashboard">
         <!-- ── Overnight Mode ── -->
         <div class="card">
           <div class="card-title">Overnight Mode</div>
@@ -347,12 +353,6 @@
             <div><span style="color:var(--text-muted);width:120px;display:inline-block;">Python</span><span id="sysinfoPython">Loading...</span></div>
             <div><span style="color:var(--text-muted);width:120px;display:inline-block;">Disk Usage</span><span id="sysinfoDisk">Loading...</span></div>
           </div>
-        </div>
-
-        <!-- ── Ticket Board ── -->
-        <div class="card">
-          <div class="card-title">Ticket Board</div>
-          <div class="kanban" id="kanbanBoard"></div>
         </div>
 
         <!-- ── Activity Feed ── -->

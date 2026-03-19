@@ -92,7 +92,8 @@ a:hover { text-decoration: underline; }
 .dot-active  { background: var(--green); box-shadow: 0 0 6px var(--green); }
 .dot-idle    { background: var(--text-muted); }
 .dot-stalled { background: var(--yellow); }
-.dot-unknown { background: var(--red); }
+.dot-offline { background: var(--text-muted); }
+.dot-unknown { background: var(--text-muted); }
 
 /* ── Buttons ── */
 .btn {

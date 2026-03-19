@@ -163,7 +163,7 @@ def read_agent_activity(workspace_root: Path, agents: list[str]) -> dict:
         last_mod = _find_last_modified(workspace_root, role)
 
         if last_mod is None:
-            status = "unknown"
+            status = "offline"
             last_active = None
         else:
             age_minutes = (now - last_mod) / 60
@@ -171,10 +171,10 @@ def read_agent_activity(workspace_root: Path, agents: list[str]) -> dict:
                 status = "active"
             elif age_minutes < 30:
                 status = "idle"
-            elif age_minutes < 120:
-                status = "idle"
+            elif age_minutes < 60 * 24:
+                status = "offline"
             else:
-                status = "unknown"
+                status = "offline"
             last_active = datetime.fromtimestamp(last_mod, tz=timezone.utc).isoformat()
 
         # Launcher paths
@@ -216,7 +216,27 @@ def read_agent_activity(workspace_root: Path, agents: list[str]) -> dict:
 
 
 def _find_last_modified(workspace_root: Path, role: str) -> float | None:
-    """Find the most recent file modification timestamp relevant to a given role."""
+    """Find the most recent file modification timestamp relevant to a given role.
+
+    Checks multiple activity signals:
+    1. OpenClaw agent session files (~/.openclaw/agents/{role}/sessions/)
+    2. Workspace output files (tickets, specs, builds, etc.)
+    """
+    latest = None
+
+    def _update(mtime: float) -> None:
+        nonlocal latest
+        if latest is None or mtime > latest:
+            latest = mtime
+
+    # Signal 1: OpenClaw agent session directory — most reliable activity indicator
+    session_dir = Path.home() / ".openclaw" / "agents" / role / "sessions"
+    if session_dir.exists():
+        for f in session_dir.iterdir():
+            if f.is_file():
+                _update(f.stat().st_mtime)
+
+    # Signal 2: Workspace output files per role
     role_file_patterns = {
         "pm": ["**/spec.md", "**/milestones.md", "**/status.md", "**/overnight-report.md"],
         "architect": ["**/implementation-plan.md", "**/architecture.md"],
@@ -228,15 +248,10 @@ def _find_last_modified(workspace_root: Path, role: str) -> float | None:
         "research": ["**/research.md", "**/technical-options.md"],
     }
 
-    patterns = role_file_patterns.get(role, [])
-    latest = None
-
-    for pattern in patterns:
+    for pattern in role_file_patterns.get(role, []):
         for f in workspace_root.glob(pattern):
             if f.is_file():
-                mtime = f.stat().st_mtime
-                if latest is None or mtime > latest:
-                    latest = mtime
+                _update(f.stat().st_mtime)
 
     return latest
 

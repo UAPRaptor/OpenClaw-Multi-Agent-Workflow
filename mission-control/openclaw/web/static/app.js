@@ -258,7 +258,7 @@ function renderAgents(agents) {
 }
 
 function statusLabel(s) {
-  return { active: 'Active', idle: 'Idle', stalled: 'Stalled', unknown: 'Unknown' }[s] || 'Unknown';
+  return { active: 'Active', idle: 'Idle', stalled: 'Stalled', offline: 'Offline', unknown: 'Offline' }[s] || 'Offline';
 }
 
 function showAgentDetails(role) {

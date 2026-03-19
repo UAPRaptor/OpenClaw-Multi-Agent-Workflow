@@ -11,6 +11,9 @@ from openclaw.monitor.state_store import StateStore
 
 STALL_THRESHOLD_MINUTES = 30
 STALL_CHECK_INTERVAL_SECONDS = 120
+# Don't alert on agents inactive longer than this — they were never started or
+# stopped long ago.  Avoids "stalled for 10134 minutes" noise.
+STALL_MAX_AGE_MINUTES = 60 * 24  # 24 hours
 
 # Paths that are expected to be written by agents
 EXPECTED_WRITE_PATTERNS = [
@@ -114,13 +117,26 @@ class AlertEngine:
             try:
                 last_ts = datetime.fromisoformat(last_active).timestamp()
                 age_minutes = (now - last_ts) / 60
+
+                # Only alert if agent was active within the last 24 hours —
+                # skip agents that were never started or stopped long ago.
+                if age_minutes > STALL_MAX_AGE_MINUTES:
+                    continue
+
                 if age_minutes > STALL_THRESHOLD_MINUTES:
                     alert_id = f"stall-{role}"
                     alerts = state.get("alerts", [])
                     existing = next((a for a in alerts if a.get("id") == alert_id and not a.get("dismissed")), None)
                     if not existing:
                         char = info.get("character", role)
-                        msg = f"Agent stalled: {char} ({role}) — no activity for {int(age_minutes)} minutes."
+                        # Human-friendly time formatting
+                        if age_minutes < 60:
+                            age_str = f"{int(age_minutes)}m"
+                        else:
+                            hours = int(age_minutes // 60)
+                            mins = int(age_minutes % 60)
+                            age_str = f"{hours}h {mins}m" if mins else f"{hours}h"
+                        msg = f"Agent stalled: {char} ({role}) — no activity for {age_str}."
                         self._log("WARNING", msg)
                         self.store.add_alert(level="warning", message=msg, alert_id=alert_id)
             except (ValueError, TypeError):

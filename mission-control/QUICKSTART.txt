@@ -1,0 +1,74 @@
+OpenClaw Mission Control — Quick Start Guide
+=============================================
+
+WHAT IS THIS?
+-------------
+OpenClaw Mission Control lets you install, monitor, and chat with a team
+of AI coding agents from a browser-based dashboard.
+
+
+REQUIREMENTS
+------------
+1. Python 3.10 or later   — https://www.python.org/downloads/
+2. OpenClaw installed      — https://docs.openclaw.ai
+
+
+SETUP (one time)
+----------------
+Open a terminal (Terminal on Mac, Command Prompt on Windows) and run:
+
+    cd mission-control
+    pip install -r requirements.txt
+
+
+INSTALL A NEW WORKSPACE
+-----------------------
+    python -m openclaw install
+
+This opens a browser wizard at http://localhost:8765 that walks you through:
+  1. Checking prerequisites (Python, OpenClaw)
+  2. Configuring AI model providers
+  3. Choosing a workspace location
+  4. Picking team size (1-8 agents)
+  5. Selecting a character theme
+  6. Deploying workspace files and agent identities
+
+
+MONITOR YOUR AGENTS
+-------------------
+    python -m openclaw monitor
+
+Opens a live dashboard showing:
+  - Agent status cards
+  - Ticket board (kanban)
+  - Session logs
+  - System info
+  - Chat with any agent
+  - Project management
+  - Workspace backups
+
+
+QUICK STATUS CHECK
+------------------
+    python -m openclaw status
+
+Prints a text summary to the terminal (no browser needed).
+
+
+ONE-CLICK LAUNCHERS
+-------------------
+Mac:
+  Double-click launch_agents.command   (installer wizard)
+  Double-click monitor_agents.command  (monitor dashboard)
+
+  First time on Mac? Paste this in Terminal first:
+    cd ~/Desktop/openclaw-mission-control-v* && xattr -cr . && chmod +x *.command
+
+Windows:
+  Double-click launch_agents.bat       (installer wizard)
+  Double-click monitor_agents.bat      (monitor dashboard)
+
+
+NEED HELP?
+----------
+Report issues: https://github.com/UAPRaptor/OpenClaw-Multi-Agent-Workflow/issues

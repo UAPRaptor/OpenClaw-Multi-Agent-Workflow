@@ -399,6 +399,20 @@
           </div>
         </div>
 
+        <!-- ── Workspace Backup ── -->
+        <div class="card dashboard-full">
+          <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+            <span>Workspace Backups</span>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-ghost" style="padding:4px 12px;font-size:12px;" onclick="saveBackup()">Save Backup</button>
+              <button class="btn btn-ghost" style="padding:4px 12px;font-size:12px;" onclick="loadBackups()">Refresh</button>
+            </div>
+          </div>
+          <div id="backupsBody" style="font-size:13px;color:var(--text-muted);">
+            <p>Loading backups...</p>
+          </div>
+        </div>
+
         <!-- ── Agent Cleanup ── -->
         <div class="card dashboard-full" id="agentCleanupCard" style="display:none">
           <div class="card-title">Agent Cleanup & Orphan Management</div>

@@ -818,6 +818,92 @@ async function reregisterAgents() {
   }
 }
 
+// ── Workspace Backups ──────────────────────────────────────────────────
+
+async function loadBackups() {
+  const body = document.getElementById('backupsBody');
+  if (!body) return;
+  body.innerHTML = '<p style="color:var(--text-muted);font-size:13px">Loading...</p>';
+  try {
+    const res = await fetch('/api/backups');
+    const data = await res.json();
+    const backups = data.backups || [];
+    if (backups.length === 0) {
+      body.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No backups yet. Click "Save Backup" to create one.</p>';
+      return;
+    }
+    let html = '<div style="display:flex;flex-direction:column;gap:6px;">';
+    for (const b of backups) {
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
+        <div>
+          <div style="font-weight:500;font-size:13px;">${escHtml(b.workspace_name)}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${escHtml(b.timestamp)} · ${b.file_count} files</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost" style="padding:3px 10px;font-size:11px;" onclick="restoreBackup('${escHtml(b.id)}')">Restore</button>
+          <button class="btn btn-ghost" style="padding:3px 10px;font-size:11px;color:var(--red);" onclick="deleteBackup('${escHtml(b.id)}')">Delete</button>
+        </div>
+      </div>`;
+    }
+    html += '</div>';
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = '<p style="color:var(--text-muted);font-size:13px">Could not load backups.</p>';
+  }
+}
+
+async function saveBackup() {
+  if (!confirm('Save a snapshot of the current workspace? This will create a timestamped copy in ~/.openclaw-mission-control/backups/')) return;
+  try {
+    const res = await fetch('/api/backups/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await res.json();
+    if (data.ok) {
+      showGatewayBanner(`Backup saved: ${data.backup_id} (${data.file_count} files)`);
+      loadBackups();
+    } else {
+      alert('Backup failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (e) {
+    alert('Backup error: ' + e.message);
+  }
+}
+
+async function restoreBackup(backupId) {
+  if (!confirm(`Restore workspace from backup "${backupId}"?\n\nA safety backup of the current state will be created first.`)) return;
+  if (!confirm('This will overwrite all current workspace files. Are you sure?')) return;
+  try {
+    const res = await fetch('/api/backups/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backup_id: backupId }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showGatewayBanner(`Restored from ${data.restored_from}. Safety backup: ${data.safety_backup}`);
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      alert('Restore failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (e) {
+    alert('Restore error: ' + e.message);
+  }
+}
+
+async function deleteBackup(backupId) {
+  if (!confirm(`Delete backup "${backupId}"? This cannot be undone.`)) return;
+  try {
+    const res = await fetch(`/api/backups/${encodeURIComponent(backupId)}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) {
+      loadBackups();
+    } else {
+      alert('Delete failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (e) {
+    alert('Delete error: ' + e.message);
+  }
+}
+
 // ── Agent Cleanup ──────────────────────────────────────────────────────────
 
 async function loadAgentRegistry() {
@@ -1193,4 +1279,5 @@ loadSessionLog();
 loadSysInfo();
 loadSkills();
 loadProjects();
+loadBackups();
 startGatewayPolling();

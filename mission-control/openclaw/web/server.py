@@ -9,6 +9,7 @@ import os
 import sys
 import platform
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -176,6 +177,107 @@ async def create_project(request: Request) -> JSONResponse:
         (project_dir / "tickets" / "closed").mkdir(parents=True, exist_ok=True)
         deploy_project_files(project_dir, project_name)
         return JSONResponse({"ok": True, "name": project_name})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.get("/api/backups")
+async def list_backups() -> JSONResponse:
+    """Lists available workspace backups."""
+    backups_dir = Path.home() / ".openclaw-mission-control" / "backups"
+    if not backups_dir.exists():
+        return JSONResponse({"backups": []})
+    backups = []
+    for d in sorted(backups_dir.iterdir(), reverse=True):
+        if d.is_dir():
+            # Parse timestamp from dirname: workspace-name_2026-03-19T12-30-00
+            parts = d.name.rsplit("_", 1)
+            name = parts[0] if len(parts) > 1 else d.name
+            ts = parts[1] if len(parts) > 1 else ""
+            # Count files
+            file_count = sum(1 for _ in d.rglob("*") if _.is_file())
+            backups.append({
+                "id": d.name,
+                "workspace_name": name,
+                "timestamp": ts.replace("-", ":").replace("T", " ") if ts else "",
+                "path": str(d),
+                "file_count": file_count,
+            })
+    return JSONResponse({"backups": backups[:20]})
+
+
+@app.post("/api/backups/save")
+async def save_backup(request: Request) -> JSONResponse:
+    """Creates a timestamped snapshot of the current workspace."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    try:
+        backups_dir = Path.home() / ".openclaw-mission-control" / "backups"
+        backups_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+        ws_name = _workspace_root.name
+        backup_dir = backups_dir / f"{ws_name}_{ts}"
+        shutil.copytree(_workspace_root, backup_dir, dirs_exist_ok=False)
+        file_count = sum(1 for _ in backup_dir.rglob("*") if _.is_file())
+        return JSONResponse({
+            "ok": True,
+            "backup_id": backup_dir.name,
+            "path": str(backup_dir),
+            "file_count": file_count,
+        })
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/backups/restore")
+async def restore_backup(request: Request) -> JSONResponse:
+    """Restores workspace from a backup. Creates a safety backup of current state first."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    body = await request.json()
+    backup_id = body.get("backup_id", "")
+    if not backup_id:
+        return JSONResponse({"ok": False, "error": "backup_id required"}, status_code=400)
+    backups_dir = Path.home() / ".openclaw-mission-control" / "backups"
+    backup_path = backups_dir / backup_id
+    if not backup_path.exists():
+        return JSONResponse({"ok": False, "error": "Backup not found"}, status_code=404)
+    # Path safety
+    if not str(backup_path.resolve()).startswith(str(backups_dir.resolve())):
+        return JSONResponse({"ok": False, "error": "Invalid backup path"}, status_code=400)
+    try:
+        # Auto-save current state before restoring
+        ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+        safety_dir = backups_dir / f"{_workspace_root.name}_pre-restore_{ts}"
+        shutil.copytree(_workspace_root, safety_dir, dirs_exist_ok=False)
+        # Clear current workspace and copy backup
+        for item in _workspace_root.iterdir():
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+        shutil.copytree(backup_path, _workspace_root, dirs_exist_ok=True)
+        return JSONResponse({
+            "ok": True,
+            "restored_from": backup_id,
+            "safety_backup": safety_dir.name,
+        })
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.delete("/api/backups/{backup_id}")
+async def delete_backup(backup_id: str) -> JSONResponse:
+    """Deletes a backup."""
+    backups_dir = Path.home() / ".openclaw-mission-control" / "backups"
+    backup_path = backups_dir / backup_id
+    if not backup_path.exists():
+        return JSONResponse({"ok": False, "error": "Backup not found"}, status_code=404)
+    if not str(backup_path.resolve()).startswith(str(backups_dir.resolve())):
+        return JSONResponse({"ok": False, "error": "Invalid backup path"}, status_code=400)
+    try:
+        shutil.rmtree(backup_path)
+        return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -508,6 +610,18 @@ async def run_install(body: dict) -> JSONResponse:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
     target = Path(body.get("target", str(Path.home() / "openclaw-workspace")))
+
+    # Auto-backup before upgrade/replace (safety net)
+    if install_mode in ("upgrade", "replace") and target.exists():
+        try:
+            backups_dir = Path.home() / ".openclaw-mission-control" / "backups"
+            backups_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+            backup_dir = backups_dir / f"{target.name}_pre-{install_mode}_{ts}"
+            shutil.copytree(target, backup_dir, dirs_exist_ok=False)
+        except Exception:
+            pass  # Non-critical — don't block install on backup failure
+
     theme = body.get("theme", "historical")
     custom_characters = body.get("custom_characters") or {}  # {role: character_name} overrides
     team_size = int(body.get("team_size", 4))

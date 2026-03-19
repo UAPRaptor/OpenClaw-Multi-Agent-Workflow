@@ -426,17 +426,28 @@ async def run_install(body: dict) -> JSONResponse:
     from openclaw.installer.config_writer import write_claude_settings
     from openclaw.installer.agent_registrar import register_openclaw_agents
 
+    install_mode = body.get("install_mode", "new")
+
+    # Dashboard-only mode: just register the workspace path, no file changes
+    if install_mode == "dashboard-only":
+        target = Path(body.get("target", str(Path.home() / "openclaw-workspace")))
+        try:
+            from openclaw.platform_utils import write_openclaw_workspace_path, save_last_workspace
+            write_openclaw_workspace_path(target)
+            save_last_workspace(str(target))
+            global _workspace
+            _workspace = target
+            return JSONResponse({"ok": True, "workspace": str(target), "created": []})
+        except Exception as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
     target = Path(body.get("target", str(Path.home() / "openclaw-workspace")))
     theme = body.get("theme", "historical")
     custom_characters = body.get("custom_characters") or {}  # {role: character_name} overrides
     team_size = int(body.get("team_size", 4))
     project_name = body.get("project_name", "example-app")
     operator_name = body.get("operator_name", "Operator")
-    # install_mode: "new" | "upgrade" | "replace"
-    # - new: fresh workspace
-    # - upgrade: add multi-agent team to existing workspace, preserve projects/ and CLAUDE.md
-    # - replace: redeploy all config to existing path, preserve projects/ only
-    install_mode = body.get("install_mode", "new")
+    # install_mode already parsed above: "new" | "upgrade" | "replace"
     update_mode = install_mode != "new"  # preserve project files if upgrading
 
     model_map = {

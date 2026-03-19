@@ -571,12 +571,31 @@ async function deleteAgent(workspacePath, role) {
 function selectInstallMode(mode) {
   state.installMode = mode;
 
-  ['upgrade', 'replace', 'new'].forEach(m => {
-    const card = document.getElementById(`mode${m.charAt(0).toUpperCase() + m.slice(1)}Card`);
+  ['upgrade', 'replace', 'new', 'dashboard'].forEach(m => {
+    const id = `mode${m.charAt(0).toUpperCase() + m.slice(1)}Card`;
+    const card = document.getElementById(id);
     const radio = card?.querySelector('input[type=radio]');
-    if (card) card.style.borderColor = m === mode ? 'var(--accent)' : 'var(--border)';
-    if (radio) radio.checked = m === mode;
+    const modeKey = m === 'dashboard' ? 'dashboard-only' : m;
+    if (card) card.style.borderColor = modeKey === mode ? 'var(--accent)' : 'var(--border)';
+    if (radio) radio.checked = modeKey === mode;
   });
+
+  // Show warnings for destructive modes
+  const warn = document.getElementById('installModeWarning');
+  if (mode === 'upgrade') {
+    warn.innerHTML = '<strong>Warning:</strong> Upgrade will overwrite workspace config files (AGENTS.md, SOUL.md, TOOLS.md, USER.md, MEMORY.md). Your project files (specs, tickets, builds) are preserved. Agent session logs and TODOs will be reset.';
+    warn.classList.remove('section-hidden');
+  } else if (mode === 'replace') {
+    warn.innerHTML = '<strong>Warning:</strong> Replace will overwrite ALL workspace config files including CLAUDE.md. Your project files (specs, tickets, builds) are preserved, but agent metadata will be reset. Use this only to recover a broken setup.';
+    warn.classList.remove('section-hidden');
+  } else {
+    warn.classList.add('section-hidden');
+  }
+}
+
+function selectDashboardOnlyMode() {
+  // Skip straight to dashboard — no install needed
+  window.location = '/monitor';
 }
 
 function confirmLocation() {
@@ -603,6 +622,12 @@ function confirmLocation() {
         'Enter a new path above for the independent workspace.';
       return;
     }
+  }
+
+  // Dashboard-only mode — skip team/theme, go straight to install
+  if (state.installMode === 'dashboard-only') {
+    goStep(6);
+    return;
   }
 
   goStep(4);
@@ -830,6 +855,23 @@ const TIER_LABELS = {
 
 function loadReview() {
   const target = state.targetDir || getDefaultDir();
+
+  if (state.installMode === 'dashboard-only') {
+    document.getElementById('reviewSummary').innerHTML = `
+      <table style="border-collapse:collapse;width:100%">
+        <tr><td style="padding:4px 0;color:var(--text-muted);width:170px">Mode</td><td><strong>Dashboard Only</strong></td></tr>
+        <tr><td style="padding:4px 0;color:var(--text-muted)">Workspace</td><td><code style="font-size:12px;color:var(--accent)">${escHtml(target)}</code></td></tr>
+      </table>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:12px">
+        Mission Control will point at this workspace for monitoring. No files will be created or modified. No agents will be registered.
+        You can add agents later using the + button on the dashboard.
+      </p>
+    `;
+    document.getElementById('filePreview').innerHTML = '<span style="color:var(--text-muted)">No files will be modified.</span>';
+    document.getElementById('btnInstall').textContent = 'Confirm';
+    return;
+  }
+
   const themeData = state.themes.find(t => t.id === state.theme) || { label: state.theme };
   const mS = state.models.strategic      || document.getElementById('modelStrategic')?.value      || '(not set)';
   const mI = state.models.implementation || document.getElementById('modelImplementation')?.value || '(not set)';
@@ -850,6 +892,7 @@ function loadReview() {
     <span style="color:var(--text-muted)">
 ${escHtml(target)}/\n  AGENTS.md\n  SOUL.md\n  TOOLS.md\n  USER.md\n  active-project.md\n  .claude/\n    settings.json\n  projects/\n    example-app/\n      spec.md\n      milestones.md\n      status.md\n      tickets/\n        open/\n        closed/\n        archive/\n      builds/
     </span>`;
+  document.getElementById('btnInstall').textContent = 'Install Workspace';
 }
 
 async function runInstall() {
@@ -861,6 +904,34 @@ async function runInstall() {
   const success = document.getElementById('installSuccess');
   const actions = document.getElementById('step6Actions');
   const postActions = document.getElementById('step6PostActions');
+
+  // Dashboard-only mode — just register the workspace path, no file changes
+  if (state.installMode === 'dashboard-only') {
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, install_mode: 'dashboard-only' }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        success.classList.remove('section-hidden');
+        document.getElementById('successPath').textContent = target;
+        actions.classList.add('section-hidden');
+        postActions.classList.remove('section-hidden');
+      } else {
+        errorBox.innerHTML = `<div class="error-box">${escHtml(data.error || 'Failed')}</div>`;
+        errorBox.classList.remove('section-hidden');
+        btn.disabled = false;
+      }
+    } catch (e) {
+      errorBox.innerHTML = `<div class="error-box">${escHtml(e.message)}</div>`;
+      errorBox.classList.remove('section-hidden');
+      btn.disabled = false;
+    }
+    return;
+  }
 
   const modelStrategic = state.models.strategic      || document.getElementById('modelStrategic')?.value      || 'claude-sonnet-4-6';
   const modelImpl      = state.models.implementation || document.getElementById('modelImplementation')?.value || 'claude-sonnet-4-6';

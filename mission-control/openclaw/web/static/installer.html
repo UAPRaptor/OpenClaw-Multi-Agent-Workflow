@@ -91,6 +91,15 @@
             <div class="workspace-card-desc">Choose a new location and create a fresh workspace from scratch.</div>
           </button>
         </div>
+        <div class="workspace-choice">
+          <button class="workspace-card" onclick="selectDashboardOnlyMode()">
+            <div class="workspace-card-title">Dashboard Only</div>
+            <div class="workspace-card-desc">Open the monitor dashboard without installing or modifying any agents. Use this if you already have agents set up and just want to observe.</div>
+          </button>
+        </div>
+        <div style="text-align:center;margin-top:16px;">
+          <a href="/monitor" style="color:var(--text-muted);font-size:13px;text-decoration:none;">&larr; Return to Dashboard</a>
+        </div>
       </div>
 
       <!-- ── Step 1: Prerequisites ── -->
@@ -99,6 +108,7 @@
         <div class="wizard-sub">Verifying your machine is ready for an OpenClaw workspace.</div>
         <div id="prereqList"><p style="color:var(--text-muted)">Checking...</p></div>
         <div class="wizard-actions">
+          <a href="/monitor" class="btn btn-ghost" style="text-decoration:none;margin-right:auto">Cancel</a>
           <button class="btn btn-primary" id="btn1Next" disabled onclick="goStep(2)">Continue</button>
         </div>
       </div>
@@ -144,6 +154,7 @@
 
         <div class="wizard-actions" style="margin-top:20px">
           <button class="btn btn-ghost" onclick="goStep(1)">Back</button>
+          <a href="/monitor" class="btn btn-ghost" style="text-decoration:none;color:var(--text-muted)">Cancel</a>
           <button class="btn btn-ghost" onclick="goStep(3)" style="margin-right:auto;color:var(--text-muted)">Skip — configure OpenClaw separately</button>
           <button class="btn btn-primary" onclick="goStep(3)">Continue</button>
         </div>
@@ -190,7 +201,15 @@
                 <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Change the path above to create an independent workspace alongside the existing one.</div>
               </div>
             </label>
+            <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px;border:2px solid var(--border);border-radius:var(--radius);" id="modeDashboardCard" onclick="selectInstallMode('dashboard-only')">
+              <input type="radio" name="installMode" value="dashboard-only" style="margin-top:3px;flex-shrink:0">
+              <div>
+                <div style="font-weight:600;font-size:13px;">Dashboard Only — No agent changes</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Point Mission Control at this workspace for monitoring only. No files or agents will be modified. You can add agents later from the dashboard.</div>
+              </div>
+            </label>
           </div>
+          <div id="installModeWarning" class="section-hidden" style="background:rgba(210,153,34,0.1);border:1px solid rgba(210,153,34,0.4);border-radius:var(--radius);padding:12px 14px;font-size:12px;margin-top:12px;color:var(--yellow)"></div>
         </div>
 
         <!-- Current agents in detected workspace -->

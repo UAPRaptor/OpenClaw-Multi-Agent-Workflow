@@ -122,6 +122,19 @@ def read_tickets(workspace_root: Path, project_path: str) -> dict:
             first_line = content.split("\n", 1)[0].strip()
             if first_line.startswith("#"):
                 title = first_line.lstrip("# ").strip()
+            # Extract severity and description snippet
+            severity = None
+            description = ""
+            found_by = None
+            for line in content.splitlines():
+                if line.startswith("**Severity:**"):
+                    severity = line.split(":", 1)[1].strip().strip("*").strip()
+                if line.startswith("**Found by:**"):
+                    found_by = line.split(":", 1)[1].strip().strip("*").strip()
+            # Description: first paragraph after "## Description"
+            desc_match = re.search(r"## Description\s*\n\s*(.+?)(?:\n\n|\n##|\Z)", content, re.DOTALL)
+            if desc_match:
+                description = desc_match.group(1).strip()[:200]
             for line in content.splitlines():
                 if line.startswith("**Status:**"):
                     status = line.split(":", 1)[1].strip().strip("*").strip().lower()
@@ -137,6 +150,9 @@ def read_tickets(workspace_root: Path, project_path: str) -> dict:
                             "file": f.name,
                             "title": title,
                             "stale": is_stale,
+                            "severity": severity,
+                            "description": description,
+                            "found_by": found_by,
                         })
                     break
 

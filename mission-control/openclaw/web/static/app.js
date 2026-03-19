@@ -478,7 +478,13 @@ function renderTickets(tickets) {
       itemsHtml = `<div class="kanban-detail" style="display:none;margin-top:6px;font-size:12px;">` +
         items.map(t => {
           const staleTag = t.stale ? ' <span style="color:#f5a623;" title="Stale">⚠</span>' : '';
-          return `<div style="padding:2px 0;border-top:1px solid var(--border);color:var(--text-muted);" title="${escHtml(t.file)}">${escHtml(t.title)}${staleTag}</div>`;
+          const sevTag = t.severity ? `<span class="badge badge-${sevColor(t.severity)}" style="margin-left:6px;font-size:10px">${escHtml(t.severity)}</span>` : '';
+          const desc = t.description ? `<div style="color:var(--text-muted);font-size:11px;margin-top:2px;line-height:1.4;">${escHtml(t.description.substring(0, 120))}${t.description.length > 120 ? '…' : ''}</div>` : '';
+          const by = t.found_by ? `<div style="font-size:10px;color:var(--text-muted);opacity:0.7;margin-top:2px;">— ${escHtml(t.found_by)}</div>` : '';
+          return `<div style="padding:6px 0;border-top:1px solid var(--border);" title="${escHtml(t.file)}">
+            <div style="display:flex;align-items:center;">${escHtml(t.title)}${staleTag}${sevTag}</div>
+            ${desc}${by}
+          </div>`;
         }).join('') + '</div>';
     }
     return `
@@ -614,6 +620,44 @@ async function loadSysInfo() {
   }
 }
 
+// ── Skills ─────────────────────────────────────────────────────────────
+
+async function loadSkills() {
+  const body = document.getElementById('skillsBody');
+  if (!body) return;
+  body.innerHTML = '<p style="color:var(--text-muted);font-size:13px">Loading...</p>';
+  try {
+    const res = await fetch('/api/skills');
+    if (!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    if (!data.ok) {
+      body.innerHTML = `<p style="color:var(--text-muted);">${escHtml(data.error || 'Could not load skills')}</p>`;
+      return;
+    }
+    const ready = (data.skills || []).filter(s => s.ready);
+    const missing = (data.skills || []).filter(s => !s.ready);
+    let html = `<div style="margin-bottom:8px;"><span style="font-weight:600;color:var(--green);">${data.ready_count}</span> / ${data.total_count} ready</div>`;
+    if (ready.length > 0) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">';
+      for (const s of ready) {
+        html += `<span class="badge badge-green" title="${escHtml(s.description)}">${escHtml(s.name)}</span>`;
+      }
+      html += '</div>';
+    }
+    if (missing.length > 0) {
+      html += `<details style="margin-top:4px;"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">${missing.length} missing skills</summary>`;
+      html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">';
+      for (const s of missing) {
+        html += `<span class="badge badge-gray" title="${escHtml(s.description)}">${escHtml(s.name)}</span>`;
+      }
+      html += '</div></details>';
+    }
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = '<p style="color:var(--text-muted);font-size:13px">Could not load skills.</p>';
+  }
+}
+
 // ── Utilities ──────────────────────────────────────────────────────────────
 
 function timeAgo(iso) {
@@ -623,6 +667,15 @@ function timeAgo(iso) {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function sevColor(sev) {
+  if (!sev) return 'gray';
+  const s = sev.toLowerCase();
+  if (s.includes('d1') || s.includes('critical')) return 'red';
+  if (s.includes('d2') || s.includes('high')) return 'yellow';
+  if (s.includes('d3') || s.includes('medium')) return 'blue';
+  return 'gray';
 }
 
 function escHtml(str) {
@@ -1070,4 +1123,5 @@ checkOpenclawSync();
 loadAgentRegistry();
 loadSessionLog();
 loadSysInfo();
+loadSkills();
 startGatewayPolling();

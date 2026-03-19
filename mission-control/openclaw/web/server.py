@@ -1333,6 +1333,69 @@ async def run_doctor() -> JSONResponse:
         }, status_code=500)
 
 
+@app.get("/api/skills")
+async def get_skills() -> JSONResponse:
+    """
+    Returns installed OpenClaw skills by running `openclaw skills list`.
+    Parses the table output to extract skill name, status, and description.
+    """
+    import subprocess
+    import re as _re
+
+    try:
+        result = subprocess.run(
+            ["openclaw", "skills", "list"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        output = result.stdout + result.stderr
+        # Strip ANSI escape codes
+        clean = _re.sub(r"\x1b\[[0-9;]*m", "", output)
+
+        skills = []
+        ready_count = 0
+        total_count = 0
+
+        # Parse summary line: "Skills (7/52 ready)"
+        summary_match = _re.search(r"Skills\s*\((\d+)/(\d+)\s+ready\)", clean)
+        if summary_match:
+            ready_count = int(summary_match.group(1))
+            total_count = int(summary_match.group(2))
+
+        # Parse table rows: │ status │ name │ description │ source │
+        for line in clean.splitlines():
+            # Match rows with ✓ or ✗
+            m = _re.match(
+                r"│\s*(✓ ready|✗ missing)\s*│\s*\S*\s*(\S[\w-]+(?:\s+[\w-]+)*)\s*│\s*(.+?)\s*│\s*(\S+)\s*│",
+                line,
+            )
+            if m:
+                status_raw = m.group(1).strip()
+                name = m.group(2).strip()
+                desc = m.group(3).strip()
+                source = m.group(4).strip()
+                skills.append({
+                    "name": name,
+                    "ready": status_raw.startswith("✓"),
+                    "description": desc,
+                    "source": source,
+                })
+
+        return JSONResponse({
+            "ok": True,
+            "ready_count": ready_count,
+            "total_count": total_count,
+            "skills": skills,
+        })
+    except subprocess.TimeoutExpired:
+        return JSONResponse({"ok": False, "error": "Skills list timed out"}, status_code=408)
+    except FileNotFoundError:
+        return JSONResponse({"ok": False, "error": "openclaw not found"}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @app.post("/api/server/restart")
 async def restart_server() -> JSONResponse:
     """

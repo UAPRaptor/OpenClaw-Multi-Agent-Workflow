@@ -460,6 +460,74 @@ function renderProject(project, activeProject) {
   `;
 }
 
+// ── Project Switching ──────────────────────────────────────────────────
+
+async function loadProjects() {
+  const sel = document.getElementById('projectSelect');
+  if (!sel) return;
+  try {
+    const res = await fetch('/api/projects');
+    const data = await res.json();
+    sel.innerHTML = '';
+    for (const p of (data.projects || [])) {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      if (p.name === data.active) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  } catch (_) {}
+}
+
+async function switchProject(name) {
+  if (!name) return;
+  try {
+    const res = await fetch('/api/projects/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      // Refresh the whole dashboard to reflect new project
+      setTimeout(() => location.reload(), 500);
+    }
+  } catch (_) {}
+}
+
+function showNewProjectInput() {
+  const row = document.getElementById('newProjectRow');
+  row.style.display = 'flex';
+  document.getElementById('newProjectName').focus();
+}
+
+function hideNewProjectInput() {
+  document.getElementById('newProjectRow').style.display = 'none';
+  document.getElementById('newProjectName').value = '';
+}
+
+async function createProject() {
+  const name = document.getElementById('newProjectName').value.trim();
+  if (!name) return;
+  try {
+    const res = await fetch('/api/projects/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      hideNewProjectInput();
+      // Switch to new project and reload
+      await switchProject(name);
+    } else {
+      alert(data.error || 'Failed to create project');
+    }
+  } catch (e) {
+    alert(`Error: ${e.message}`);
+  }
+}
+
 // ── Tickets ────────────────────────────────────────────────────────────────
 
 const TICKET_STATES = ['proposed','ready','in-progress','blocked','qa-failed','fixed','passed','released'];
@@ -1124,4 +1192,5 @@ loadAgentRegistry();
 loadSessionLog();
 loadSysInfo();
 loadSkills();
+loadProjects();
 startGatewayPolling();

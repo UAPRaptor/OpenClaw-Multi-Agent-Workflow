@@ -114,6 +114,72 @@ async def session_log() -> JSONResponse:
     return JSONResponse({"rows": rows[-20:], "raw": content})
 
 
+@app.get("/api/projects")
+async def list_projects() -> JSONResponse:
+    """Lists available projects in the workspace's projects/ directory."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    projects_dir = _workspace_root / "projects"
+    if not projects_dir.exists():
+        return JSONResponse({"projects": []})
+    projects = []
+    for d in sorted(projects_dir.iterdir()):
+        if d.is_dir():
+            projects.append({"name": d.name, "path": f"projects/{d.name}"})
+    # Read active project
+    from openclaw.monitor.agent_state_reader import read_active_project
+    active = read_active_project(_workspace_root)
+    active_name = active["name"] if active else None
+    return JSONResponse({"projects": projects, "active": active_name})
+
+
+@app.post("/api/projects/switch")
+async def switch_project(request: Request) -> JSONResponse:
+    """Switches the active project by rewriting active-project.md."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    body = await request.json()
+    project_name = body.get("name", "").strip()
+    if not project_name:
+        return JSONResponse({"ok": False, "error": "project name required"}, status_code=400)
+    project_dir = _workspace_root / "projects" / project_name
+    if not project_dir.exists():
+        return JSONResponse({"ok": False, "error": f"Project '{project_name}' not found"}, status_code=404)
+    # Write active-project.md
+    active_file = _workspace_root / "active-project.md"
+    active_file.write_text(
+        f"Active Project: {project_name}\nProject Path: projects/{project_name}\n",
+        encoding="utf-8",
+    )
+    return JSONResponse({"ok": True, "active": project_name})
+
+
+@app.post("/api/projects/create")
+async def create_project(request: Request) -> JSONResponse:
+    """Creates a new project directory with template files."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    body = await request.json()
+    project_name = body.get("name", "").strip()
+    if not project_name:
+        return JSONResponse({"ok": False, "error": "project name required"}, status_code=400)
+    import re as _re
+    if not _re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}$", project_name):
+        return JSONResponse({"ok": False, "error": "Invalid name: use letters, numbers, hyphens, underscores"}, status_code=400)
+    project_dir = _workspace_root / "projects" / project_name
+    if project_dir.exists():
+        return JSONResponse({"ok": False, "error": f"Project '{project_name}' already exists"}, status_code=409)
+    try:
+        from openclaw.installer.template_deployer import deploy_project_files
+        project_dir.mkdir(parents=True)
+        (project_dir / "tickets" / "open").mkdir(parents=True, exist_ok=True)
+        (project_dir / "tickets" / "closed").mkdir(parents=True, exist_ok=True)
+        deploy_project_files(project_dir, project_name)
+        return JSONResponse({"ok": True, "name": project_name})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @app.get("/api/morning-report")
 async def morning_report() -> JSONResponse:
     if _workspace_root is None:

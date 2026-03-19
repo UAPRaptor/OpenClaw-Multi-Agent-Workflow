@@ -31,18 +31,20 @@ SERVER_HOST = "127.0.0.1"
 def install(
     workspace: Optional[str] = typer.Option(
         None, "--workspace", "-w", help="Path for the new workspace (default: ~/openclaw-workspace)"
-    )
+    ),
+    auth: bool = typer.Option(False, "--auth", help="Enable bearer token auth for API endpoints"),
 ):
     """Launch the installation wizard in your browser."""
     workspace_path = Path(workspace) if workspace else get_default_workspace_dir()
-    _start_server(workspace_root=workspace_path, open_path="/install")
+    _start_server(workspace_root=workspace_path, open_path="/install", enable_auth=auth)
 
 
 @app.command()
 def monitor(
     workspace: Optional[str] = typer.Option(
         None, "--workspace", "-w", help="Workspace path to monitor"
-    )
+    ),
+    auth: bool = typer.Option(False, "--auth", help="Enable bearer token auth for API endpoints"),
 ):
     """Start the live monitor dashboard for an existing workspace."""
     workspace_path = Path(workspace) if workspace else _find_workspace()
@@ -53,7 +55,7 @@ def monitor(
             err=True,
         )
         raise typer.Exit(1)
-    _start_server(workspace_root=workspace_path, open_path="/monitor")
+    _start_server(workspace_root=workspace_path, open_path="/monitor", enable_auth=auth)
 
 
 @app.command()
@@ -100,11 +102,12 @@ def _find_workspace() -> Path:
     return get_default_workspace_dir()
 
 
-def _start_server(workspace_root: Path, open_path: str = "/") -> None:
+def _start_server(workspace_root: Path, open_path: str = "/", enable_auth: bool = False) -> None:
     """
     Starts the FastAPI server, wires up the monitor if workspace exists,
     opens the browser, and blocks until Ctrl+C.
     """
+    import secrets
     from openclaw.monitor.state_store import StateStore
     from openclaw.monitor.alert_engine import AlertEngine
     from openclaw.monitor.file_watcher import WorkspaceWatcher
@@ -114,10 +117,17 @@ def _start_server(workspace_root: Path, open_path: str = "/") -> None:
     typer.echo(f"OpenClaw Mission Control — {get_platform_label()}")
     typer.echo(f"Starting server at http://{SERVER_HOST}:{SERVER_PORT}")
 
+    # Generate auth token if requested
+    auth_token = None
+    if enable_auth:
+        auth_token = secrets.token_urlsafe(32)
+        typer.echo(f"Auth token: {auth_token}")
+        typer.echo("Include 'Authorization: Bearer <token>' in API requests.")
+
     # Set up monitor if workspace exists
     store = StateStore(workspace_root)
     alert_engine = AlertEngine(workspace_root, store)
-    web_server.configure(store, workspace_root)
+    web_server.configure(store, workspace_root, auth_token=auth_token)
 
     watcher = None
     if workspace_root.exists():

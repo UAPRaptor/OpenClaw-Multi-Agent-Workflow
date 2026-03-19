@@ -27,14 +27,30 @@ from openclaw.platform_utils import (
     find_openclaw_binary, open_browser, is_windows,
 )
 from openclaw.installer.template_deployer import ROLE_LABELS
+from openclaw.web.models import (
+    InstallRequest, ChatSendRequest, AddAgentRequest, AgentCleanupRequest,
+    ProjectRequest, BackupRestoreRequest, ConfigureProviderRequest,
+    ReregisterRequest, WorkspaceAgentDeleteRequest,
+)
 from openclaw import __version__
 
 # These are injected at startup from the CLI
 _store = None
 _workspace_root: Path | None = None
 _installer_context: dict = {}
+_auth_token: str | None = None  # Set at startup; None = no auth required
 
 app = FastAPI(title="OpenClaw Mission Control", docs_url=None, redoc_url=None)
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Optional bearer token auth. Only enforced for /api/ routes when _auth_token is set."""
+    if _auth_token and request.url.path.startswith("/api/"):
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header != f"Bearer {_auth_token}":
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 
 
 def _static_dir() -> Path:
@@ -588,17 +604,22 @@ async def reregister_agents(body: dict) -> JSONResponse:
 
 
 @app.post("/api/install")
-async def run_install(body: dict) -> JSONResponse:
+async def run_install(request: Request) -> JSONResponse:
     from openclaw.installer.workspace_builder import build_layout, create_workspace, write_agent_launchers
     from openclaw.installer.template_deployer import deploy_workspace_files, deploy_project_files
     from openclaw.installer.config_writer import write_claude_settings
     from openclaw.installer.agent_registrar import register_openclaw_agents
 
-    install_mode = body.get("install_mode", "new")
+    try:
+        body = InstallRequest(**(await request.json()))
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+
+    install_mode = body.install_mode
 
     # Dashboard-only mode: just register the workspace path, no file changes
     if install_mode == "dashboard-only":
-        target = Path(body.get("target", str(Path.home() / "openclaw-workspace")))
+        target = Path(body.target or str(Path.home() / "openclaw-workspace"))
         try:
             from openclaw.platform_utils import write_openclaw_workspace_path, save_last_workspace
             write_openclaw_workspace_path(target)
@@ -609,7 +630,7 @@ async def run_install(body: dict) -> JSONResponse:
         except Exception as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
-    target = Path(body.get("target", str(Path.home() / "openclaw-workspace")))
+    target = Path(body.target or str(Path.home() / "openclaw-workspace"))
 
     # Auto-backup before upgrade/replace (safety net)
     if install_mode in ("upgrade", "replace") and target.exists():
@@ -622,18 +643,17 @@ async def run_install(body: dict) -> JSONResponse:
         except Exception:
             pass  # Non-critical — don't block install on backup failure
 
-    theme = body.get("theme", "historical")
-    custom_characters = body.get("custom_characters") or {}  # {role: character_name} overrides
-    team_size = int(body.get("team_size", 4))
-    project_name = body.get("project_name", "example-app")
-    operator_name = body.get("operator_name", "Operator")
-    # install_mode already parsed above: "new" | "upgrade" | "replace"
-    update_mode = install_mode != "new"  # preserve project files if upgrading
+    theme = body.theme
+    custom_characters = body.custom_characters or {}
+    team_size = body.team_size
+    project_name = body.project_name
+    operator_name = body.operator_name
+    update_mode = install_mode != "new"
 
     model_map = {
-        "strategic":      body.get("model_strategic", "claude-sonnet-4-6"),
-        "implementation": body.get("model_implementation", "claude-sonnet-4-6"),
-        "support":        body.get("model_support", "claude-sonnet-4-6"),
+        "strategic":      body.model_strategic,
+        "implementation": body.model_implementation,
+        "support":        body.model_support,
     }
     default_model = model_map["strategic"]
 
@@ -1159,23 +1179,14 @@ async def add_agent(request: Request) -> JSONResponse:
     Body: {role: str, name: str, label: str}
     Creates IDENTITY.md and registers in openclaw.json + AGENTS.md.
     """
-    import re
-    body = await request.json()
-    role = body.get("role", "").strip().lower()
-    name = body.get("name", "").strip()
-    label = body.get("label", "").strip() or name
+    try:
+        body = AddAgentRequest(**(await request.json()))
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
-    # Validate role ID
-    if not role or not re.match(r"^[a-z][a-z0-9-]{0,29}$", role):
-        return JSONResponse(
-            {"ok": False, "error": "Role ID must be lowercase letters/numbers/hyphens, 1-30 chars."},
-            status_code=400,
-        )
-    if not name:
-        return JSONResponse(
-            {"ok": False, "error": "Display name is required."},
-            status_code=400,
-        )
+    role = body.role
+    name = body.name.strip()
+    label = body.label.strip() or name
 
     from openclaw.installer.agent_registrar import register_openclaw_agents
 
@@ -1635,21 +1646,20 @@ async def chat_send(request: Request) -> JSONResponse:
     Body: {agentId, message, sessionId?}
     Returns: {ok, response, sessionId, model, runId}
     """
-    body = await request.json()
-    agent_id = str(body.get("agentId", "main")).strip()
-    message = str(body.get("message", "")).strip()
-    # Use client-provided sessionId, fall back to server-tracked session
-    session_id = body.get("sessionId") or _chat_sessions.get(agent_id)
+    try:
+        body = ChatSendRequest(**(await request.json()))
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+
+    agent_id = body.agentId
+    message = body.message.strip()
+    session_id = body.sessionId or _chat_sessions.get(agent_id)
 
     if not message:
         return JSONResponse({"ok": False, "error": "Message is required"}, status_code=400)
 
-    # Validate agentId to prevent injection
-    import re as _re
-    if not _re.match(r'^[a-zA-Z0-9_-]{1,64}$', agent_id):
-        return JSONResponse({"ok": False, "error": "Invalid agentId"}, status_code=400)
-
     cmd = ["openclaw", "agent", "--agent", agent_id, "--message", message, "--json"]
+    import re as _re
     if session_id and _re.match(r'^[a-zA-Z0-9_-]{1,128}$', str(session_id)):
         cmd += ["--session-id", str(session_id)]
 
@@ -1805,10 +1815,11 @@ app.mount("/static", StaticFiles(directory=str(_static_dir())), name="static")
 
 # ── Startup helpers ────────────────────────────────────────────────────────────
 
-def configure(store, workspace_root: Path) -> None:
-    global _store, _workspace_root
+def configure(store, workspace_root: Path, auth_token: str | None = None) -> None:
+    global _store, _workspace_root, _auth_token
     _store = store
     _workspace_root = workspace_root
+    _auth_token = auth_token
     # Wire state changes to WebSocket broadcasts
     store.register_listener(hub.broadcast_from_thread)
 

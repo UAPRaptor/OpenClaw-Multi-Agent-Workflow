@@ -2,9 +2,11 @@
 
 **Type:** {{ ticket_type }}
 **Priority:** {{ priority }}
+**Severity:** {{ severity }}
 **Found by:** {{ found_by }}
 **Assigned to:** {{ assigned_to }}
 **Status:** {{ status }}
+**Epic:** {{ epic }}
 **Created:** {{ created_date }}
 **Updated:** {{ updated_date }}
 

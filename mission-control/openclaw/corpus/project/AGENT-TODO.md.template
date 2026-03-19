@@ -39,10 +39,12 @@ All agents read this file at the start of every session and update it after ever
 
 ## Ticket Backlog
 
-Open tickets are tracked in `tickets/open/`.
-Add new items here only if they don't yet have a ticket file:
-
-*(none yet)*
+Open tickets are tracked in `tickets/open/`. **All new work items should be created as tickets**, not TODO entries. Use ticket types:
+- **TASK-NNN** — general work items (replaces TODO entries)
+- **FEAT-NNN** — new feature requests
+- **BUG-NNN** — defects and regressions
+- **QUESTION-NNN** — clarification needed
+- **EPIC-NNN** — groups related tickets into larger initiatives
 
 ---
 

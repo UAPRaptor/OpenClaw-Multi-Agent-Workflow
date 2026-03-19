@@ -115,3 +115,51 @@ class ReregisterRequest(BaseModel):
 class WorkspaceAgentDeleteRequest(BaseModel):
     path: str = Field(min_length=1)
     role: str = Field(min_length=1)
+
+
+class CreateTicketRequest(BaseModel):
+    ticket_type: str = Field(default="TASK")
+    title: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    priority: str = "D3"
+    severity: str = "—"
+    epic: str = "—"
+    assigned_to: str = "unassigned"
+    found_by: str = "Operator"
+
+    @field_validator("ticket_type")
+    @classmethod
+    def validate_ticket_type(cls, v: str) -> str:
+        v = v.upper()
+        if v not in ("BUG", "FEAT", "TASK", "QUESTION", "EPIC"):
+            raise ValueError("ticket_type must be BUG, FEAT, TASK, QUESTION, or EPIC")
+        return v
+
+    @field_validator("priority")
+    @classmethod
+    def validate_priority(cls, v: str) -> str:
+        if v not in ("D1", "D2", "D3", "D4"):
+            raise ValueError("priority must be D1, D2, D3, or D4")
+        return v
+
+
+class CloneProjectRequest(BaseModel):
+    repo_url: str = Field(min_length=1)
+    name: str | None = None
+
+    @field_validator("repo_url")
+    @classmethod
+    def validate_repo_url(cls, v: str) -> str:
+        v = v.strip()
+        if not re.match(r"^https?://", v):
+            raise ValueError("repo_url must be an HTTPS URL")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if v and not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}$", v):
+                raise ValueError("Invalid name: use letters, numbers, hyphens, underscores")
+        return v

@@ -15,11 +15,15 @@ TICKET_STATES = [
     "qa-failed", "fixed", "passed", "released"
 ]
 
+TICKET_TYPES = ["BUG", "FEAT", "TASK", "QUESTION", "EPIC"]
+
 # File path patterns → human-readable activity messages
 ACTIVITY_PATTERNS = [
     (r"tickets/open/BUG-\d+", "QA opened bug ticket"),
     (r"tickets/open/FEAT-\d+", "PM added feature request"),
+    (r"tickets/open/TASK-\d+", "New task created"),
     (r"tickets/open/QUESTION-\d+", "Agent raised a question"),
+    (r"tickets/open/EPIC-\d+", "Epic created"),
     (r"tickets/closed/", "Ticket closed"),
     (r"builds/build_v[\d.]+", "Builder produced a new build"),
     (r"builds/", "Build directory updated"),
@@ -101,9 +105,25 @@ def read_project_status(workspace_root: Path, project_path: str) -> dict:
     return result
 
 
+def _infer_ticket_type(filename: str, content: str) -> str:
+    """Infer ticket type from **Type:** field or filename prefix."""
+    for line in content.splitlines():
+        if line.startswith("**Type:**"):
+            val = line.split(":", 1)[1].strip().strip("*").strip().upper()
+            if val in TICKET_TYPES:
+                return val
+    # Fallback: infer from filename prefix
+    stem = filename.upper()
+    for t in TICKET_TYPES:
+        if stem.startswith(t + "-"):
+            return t
+    return "TASK"  # default
+
+
 def read_tickets(workspace_root: Path, project_path: str) -> dict:
     counts = {s: 0 for s in TICKET_STATES}
     details: dict[str, list[dict]] = {s: [] for s in TICKET_STATES}
+    type_counts: dict[str, int] = {t: 0 for t in TICKET_TYPES}
     stale = 0  # tickets in-progress or blocked > 4 hours without modification
 
     tickets_open = workspace_root / project_path / "tickets" / "open"
@@ -122,17 +142,25 @@ def read_tickets(workspace_root: Path, project_path: str) -> dict:
             first_line = content.split("\n", 1)[0].strip()
             if first_line.startswith("#"):
                 title = first_line.lstrip("# ").strip()
+            # Extract ticket type
+            ticket_type = _infer_ticket_type(f.name, content)
+            type_counts[ticket_type] = type_counts.get(ticket_type, 0) + 1
             # Extract severity and description snippet
             severity = None
             description = ""
             found_by = None
+            epic = None
             for line in content.splitlines():
                 if line.startswith("**Severity:**"):
                     severity = line.split(":", 1)[1].strip().strip("*").strip()
                 if line.startswith("**Found by:**"):
                     found_by = line.split(":", 1)[1].strip().strip("*").strip()
-            # Description: first paragraph after "## Description"
-            desc_match = re.search(r"## Description\s*\n\s*(.+?)(?:\n\n|\n##|\Z)", content, re.DOTALL)
+                if line.startswith("**Epic:**"):
+                    val = line.split(":", 1)[1].strip().strip("*").strip()
+                    if val and val != "—":
+                        epic = val
+            # Description: first paragraph after "## Description" or "## Goal" (for epics)
+            desc_match = re.search(r"## (?:Description|Goal)\s*\n\s*(.+?)(?:\n\n|\n##|\Z)", content, re.DOTALL)
             if desc_match:
                 description = desc_match.group(1).strip()[:200]
             for line in content.splitlines():
@@ -153,6 +181,8 @@ def read_tickets(workspace_root: Path, project_path: str) -> dict:
                             "severity": severity,
                             "description": description,
                             "found_by": found_by,
+                            "type": ticket_type,
+                            "epic": epic,
                         })
                     break
 
@@ -160,6 +190,7 @@ def read_tickets(workspace_root: Path, project_path: str) -> dict:
     count_by_status(tickets_closed)
     counts["_stale"] = stale
     counts["_details"] = details
+    counts["_type_counts"] = type_counts
     return counts
 
 

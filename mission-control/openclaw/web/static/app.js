@@ -472,7 +472,8 @@ async function loadProjects() {
     for (const p of (data.projects || [])) {
       const opt = document.createElement('option');
       opt.value = p.name;
-      opt.textContent = p.name;
+      const prefix = p.source === 'github' ? '[GH] ' : '';
+      opt.textContent = prefix + p.name;
       if (p.name === data.active) opt.selected = true;
       sel.appendChild(opt);
     }
@@ -495,20 +496,31 @@ async function switchProject(name) {
   } catch (_) {}
 }
 
-function showNewProjectInput() {
-  const row = document.getElementById('newProjectRow');
-  row.style.display = 'flex';
-  document.getElementById('newProjectName').focus();
+function showNewProjectModal() {
+  const overlay = document.getElementById('newProjectOverlay');
+  if (overlay) overlay.style.display = 'flex';
+  switchProjectTab('local');
 }
 
-function hideNewProjectInput() {
-  document.getElementById('newProjectRow').style.display = 'none';
-  document.getElementById('newProjectName').value = '';
+function closeNewProjectModal(e) {
+  if (e && e.target !== e.currentTarget) return;
+  const overlay = document.getElementById('newProjectOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function switchProjectTab(tab) {
+  document.getElementById('projTabLocal').className = tab === 'local' ? 'tab-btn active' : 'tab-btn';
+  document.getElementById('projTabGithub').className = tab === 'github' ? 'tab-btn active' : 'tab-btn';
+  document.getElementById('projPanelLocal').style.display = tab === 'local' ? 'block' : 'none';
+  document.getElementById('projPanelGithub').style.display = tab === 'github' ? 'block' : 'none';
+  if (tab === 'github' && !_ghReposCache) loadGithubRepos();
 }
 
 async function createProject() {
   const name = document.getElementById('newProjectName').value.trim();
   if (!name) return;
+  const btn = document.getElementById('createLocalBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
   try {
     const res = await fetch('/api/projects/create', {
       method: 'POST',
@@ -517,16 +529,113 @@ async function createProject() {
     });
     const data = await res.json();
     if (data.ok) {
-      hideNewProjectInput();
-      // Switch to new project and reload
+      closeNewProjectModal();
+      document.getElementById('newProjectName').value = '';
       await switchProject(name);
     } else {
       alert(data.error || 'Failed to create project');
     }
   } catch (e) {
     alert(`Error: ${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create';
   }
 }
+
+// ── GitHub Clone ──────────────────────────────────────────────────────────
+
+let _ghReposCache = null;
+let _ghSelectedRepo = null;
+
+async function loadGithubRepos() {
+  const list = document.getElementById('ghRepoList');
+  const err = document.getElementById('ghError');
+  err.style.display = 'none';
+  list.innerHTML = '<div style="color:var(--text-muted);padding:12px;">Loading repos...</div>';
+  try {
+    const res = await fetch('/api/github/repos');
+    const data = await res.json();
+    if (!data.ok) {
+      err.textContent = data.error + (data.install_hint ? ` — ${data.install_hint}` : '');
+      err.style.display = 'block';
+      list.innerHTML = '';
+      return;
+    }
+    _ghReposCache = data.repos || [];
+    renderGhRepoList(_ghReposCache);
+  } catch (e) {
+    err.textContent = `Error: ${e.message}`;
+    err.style.display = 'block';
+    list.innerHTML = '';
+  }
+}
+
+function filterGhRepos(query) {
+  if (!_ghReposCache) return;
+  const q = query.toLowerCase();
+  const filtered = _ghReposCache.filter(r =>
+    r.name.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q)
+  );
+  renderGhRepoList(filtered);
+}
+
+function renderGhRepoList(repos) {
+  const list = document.getElementById('ghRepoList');
+  if (!repos.length) {
+    list.innerHTML = '<div style="color:var(--text-muted);padding:12px;">No repos found.</div>';
+    return;
+  }
+  list.innerHTML = repos.map(r => `
+    <div style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;align-items:center;"
+         onclick="selectGhRepo('${escHtml(r.name)}', '${escHtml(r.url)}')">
+      <div style="min-width:0;flex:1;">
+        <div style="font-weight:600;font-size:13px;">${escHtml(r.name)}${r.isPrivate ? ' <span style="font-size:10px;color:var(--text-muted);">private</span>' : ''}</div>
+        ${r.description ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(r.description)}</div>` : ''}
+      </div>
+      <span style="font-size:11px;color:var(--accent);white-space:nowrap;margin-left:12px;">Select</span>
+    </div>
+  `).join('');
+}
+
+function selectGhRepo(name, url) {
+  _ghSelectedRepo = { name, url };
+  document.getElementById('ghSelectedName').textContent = name;
+  document.getElementById('ghCloneName').value = '';
+  document.getElementById('ghRepoSelected').style.display = 'block';
+}
+
+async function cloneGithubRepo() {
+  if (!_ghSelectedRepo) return;
+  const nameOverride = document.getElementById('ghCloneName').value.trim();
+  const btn = document.getElementById('ghCloneBtn');
+  btn.disabled = true; btn.textContent = 'Cloning...';
+  try {
+    const res = await fetch('/api/projects/clone', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo_url: _ghSelectedRepo.url,
+        name: nameOverride || null,
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeNewProjectModal();
+      _ghSelectedRepo = null;
+      await switchProject(data.name);
+    } else {
+      alert(data.error || 'Clone failed');
+    }
+  } catch (e) {
+    alert(`Error: ${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Clone & Create Project';
+  }
+}
+
+// Legacy aliases for backward compatibility
+function showNewProjectInput() { showNewProjectModal(); }
+function hideNewProjectInput() { closeNewProjectModal(); }
 
 // ── Tickets ────────────────────────────────────────────────────────────────
 
@@ -549,8 +658,10 @@ function renderTickets(tickets) {
           const sevTag = t.severity ? `<span class="badge badge-${sevColor(t.severity)}" style="margin-left:6px;font-size:10px">${escHtml(t.severity)}</span>` : '';
           const desc = t.description ? `<div style="color:var(--text-muted);font-size:11px;margin-top:2px;line-height:1.4;">${escHtml(t.description.substring(0, 120))}${t.description.length > 120 ? '…' : ''}</div>` : '';
           const by = t.found_by ? `<div style="font-size:10px;color:var(--text-muted);opacity:0.7;margin-top:2px;">— ${escHtml(t.found_by)}</div>` : '';
+          const tBadge = typeBadge(t.type);
+          const epicTag = t.epic ? `<span style="font-size:9px;color:#9b59b6;margin-left:6px;" title="Epic: ${escHtml(t.epic)}">[${escHtml(t.epic)}]</span>` : '';
           return `<div style="padding:6px 0;border-top:1px solid var(--border);" title="${escHtml(t.file)}">
-            <div style="display:flex;align-items:center;">${escHtml(t.title)}${staleTag}${sevTag}</div>
+            <div style="display:flex;align-items:center;">${tBadge}${escHtml(t.title)}${staleTag}${sevTag}${epicTag}</div>
             ${desc}${by}
           </div>`;
         }).join('') + '</div>';
@@ -570,6 +681,56 @@ function toggleKanbanDetail(col) {
   const detail = col.querySelector('.kanban-detail');
   if (detail) {
     detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
+  }
+}
+
+// ── New Ticket ────────────────────────────────────────────────────────────
+
+function showNewTicketModal() {
+  const overlay = document.getElementById('newTicketOverlay');
+  if (overlay) overlay.style.display = 'flex';
+}
+
+function closeNewTicketModal(e) {
+  if (e && e.target !== e.currentTarget) return;
+  const overlay = document.getElementById('newTicketOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function toggleSeverityField() {
+  const type = document.getElementById('ticketType').value;
+  const sevRow = document.getElementById('ticketSeverityRow');
+  if (sevRow) sevRow.style.display = type === 'BUG' ? 'block' : 'none';
+}
+
+async function submitNewTicket() {
+  const type = document.getElementById('ticketType').value;
+  const title = document.getElementById('ticketTitle').value.trim();
+  const desc = document.getElementById('ticketDesc').value.trim();
+  const priority = document.getElementById('ticketPriority').value;
+  const severity = document.getElementById('ticketSeverity')?.value || '—';
+  const epic = document.getElementById('ticketEpic')?.value.trim() || '—';
+  if (!title) { alert('Title is required'); return; }
+  const btn = document.getElementById('ticketSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    const res = await fetch('/api/tickets/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket_type: type, title, description: desc, priority, severity, epic }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeNewTicketModal();
+      document.getElementById('ticketTitle').value = '';
+      document.getElementById('ticketDesc').value = '';
+    } else {
+      alert(data.error || 'Failed to create ticket');
+    }
+  } catch (e) {
+    alert(`Error: ${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create Ticket';
   }
 }
 
@@ -744,6 +905,23 @@ function sevColor(sev) {
   if (s.includes('d2') || s.includes('high')) return 'yellow';
   if (s.includes('d3') || s.includes('medium')) return 'blue';
   return 'gray';
+}
+
+function typeColor(type) {
+  switch ((type || '').toUpperCase()) {
+    case 'BUG': return '#e74c3c';
+    case 'FEAT': return '#3498db';
+    case 'TASK': return '#95a5a6';
+    case 'QUESTION': return '#f39c12';
+    case 'EPIC': return '#9b59b6';
+    default: return '#95a5a6';
+  }
+}
+
+function typeBadge(type) {
+  if (!type) return '';
+  const color = typeColor(type);
+  return `<span style="display:inline-block;font-size:9px;font-weight:700;color:#fff;background:${color};padding:1px 5px;border-radius:3px;margin-right:6px;letter-spacing:0.5px;">${escHtml(type)}</span>`;
 }
 
 function escHtml(str) {

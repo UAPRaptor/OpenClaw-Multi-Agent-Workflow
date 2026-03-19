@@ -30,7 +30,8 @@ from openclaw.installer.template_deployer import ROLE_LABELS
 from openclaw.web.models import (
     InstallRequest, ChatSendRequest, AddAgentRequest, AgentCleanupRequest,
     ProjectRequest, BackupRestoreRequest, ConfigureProviderRequest,
-    ReregisterRequest, WorkspaceAgentDeleteRequest,
+    ReregisterRequest, WorkspaceAgentDeleteRequest, CreateTicketRequest,
+    CloneProjectRequest,
 )
 from openclaw import __version__
 
@@ -139,10 +140,17 @@ async def list_projects() -> JSONResponse:
     projects_dir = _workspace_root / "projects"
     if not projects_dir.exists():
         return JSONResponse({"projects": []})
+    from openclaw.installer.template_deployer import read_project_metadata
     projects = []
     for d in sorted(projects_dir.iterdir()):
         if d.is_dir():
-            projects.append({"name": d.name, "path": f"projects/{d.name}"})
+            meta = read_project_metadata(d)
+            projects.append({
+                "name": d.name,
+                "path": f"projects/{d.name}",
+                "source": meta.get("source", "local"),
+                "remote_url": meta.get("remote_url"),
+            })
     # Read active project
     from openclaw.monitor.agent_state_reader import read_active_project
     active = read_active_project(_workspace_root)
@@ -187,13 +195,145 @@ async def create_project(request: Request) -> JSONResponse:
     if project_dir.exists():
         return JSONResponse({"ok": False, "error": f"Project '{project_name}' already exists"}, status_code=409)
     try:
-        from openclaw.installer.template_deployer import deploy_project_files
+        from openclaw.installer.template_deployer import deploy_project_files, write_project_metadata
         project_dir.mkdir(parents=True)
         (project_dir / "tickets" / "open").mkdir(parents=True, exist_ok=True)
         (project_dir / "tickets" / "closed").mkdir(parents=True, exist_ok=True)
         deploy_project_files(project_dir, project_name)
+        write_project_metadata(project_dir, "local")
         return JSONResponse({"ok": True, "name": project_name})
     except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/tickets/create")
+async def create_ticket(body: CreateTicketRequest) -> JSONResponse:
+    """Creates a new ticket file in the active project's tickets/open/ directory."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    from openclaw.monitor.agent_state_reader import read_active_project
+    active = read_active_project(_workspace_root)
+    if not active:
+        return JSONResponse({"ok": False, "error": "No active project"}, status_code=400)
+    open_dir = _workspace_root / active["path"] / "tickets" / "open"
+    open_dir.mkdir(parents=True, exist_ok=True)
+    closed_dir = _workspace_root / active["path"] / "tickets" / "closed"
+    # Auto-increment: find highest existing number for this type prefix
+    prefix = body.ticket_type
+    max_num = 0
+    for d in [open_dir, closed_dir]:
+        if d.exists():
+            for f in d.glob(f"{prefix}-*.md"):
+                try:
+                    num = int(f.stem.split("-", 1)[1])
+                    max_num = max(max_num, num)
+                except (ValueError, IndexError):
+                    pass
+    ticket_num = max_num + 1
+    ticket_id = f"{prefix}-{ticket_num:03d}"
+    # Render the template
+    from openclaw.installer.template_deployer import get_corpus_dir
+    from jinja2 import Environment, FileSystemLoader
+    corpus = get_corpus_dir()
+    template_name = "epic.md.template" if body.ticket_type == "EPIC" else "ticket.md.template"
+    env = Environment(loader=FileSystemLoader(str(corpus / "project")), trim_blocks=True, lstrip_blocks=True)
+    tmpl = env.get_template(template_name)
+    from datetime import date
+    rendered = tmpl.render(
+        ticket_id=ticket_id,
+        title=body.title,
+        ticket_type=body.ticket_type,
+        priority=body.priority,
+        severity=body.severity,
+        epic=body.epic,
+        found_by=body.found_by,
+        assigned_to=body.assigned_to,
+        status="proposed",
+        description=body.description or "[To be filled]",
+        created_date=date.today().isoformat(),
+        updated_date=date.today().isoformat(),
+    )
+    ticket_file = open_dir / f"{ticket_id}.md"
+    ticket_file.write_text(rendered, encoding="utf-8")
+    return JSONResponse({"ok": True, "ticket_id": ticket_id, "file": str(ticket_file)})
+
+
+@app.get("/api/github/repos")
+async def list_github_repos() -> JSONResponse:
+    """Lists the user's GitHub repos using the gh CLI."""
+    if not shutil.which("gh"):
+        return JSONResponse({
+            "ok": False,
+            "error": "GitHub CLI (gh) not found",
+            "install_hint": "Install from https://cli.github.com",
+        }, status_code=503)
+    try:
+        proc = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                "gh", "repo", "list", "--json", "name,url,description,isPrivate", "--limit", "50",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            ),
+            timeout=15,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            err = stderr.decode(errors="replace").strip()
+            if "auth" in err.lower() or "login" in err.lower():
+                return JSONResponse({"ok": False, "error": "Not authenticated. Run 'gh auth login' in your terminal."}, status_code=401)
+            return JSONResponse({"ok": False, "error": err}, status_code=500)
+        repos = json.loads(stdout.decode())
+        return JSONResponse({"ok": True, "repos": repos})
+    except asyncio.TimeoutError:
+        return JSONResponse({"ok": False, "error": "gh CLI timed out"}, status_code=504)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/projects/clone")
+async def clone_project(body: CloneProjectRequest) -> JSONResponse:
+    """Clones a GitHub repo into projects/ and deploys project template files."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    if not shutil.which("git"):
+        return JSONResponse({"ok": False, "error": "git not found. Install from https://git-scm.com"}, status_code=503)
+    # Derive project name from URL if not provided
+    project_name = body.name
+    if not project_name:
+        project_name = body.repo_url.rstrip("/").split("/")[-1].removesuffix(".git")
+    import re as _re
+    if not _re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}$", project_name):
+        return JSONResponse({"ok": False, "error": f"Invalid project name derived from URL: '{project_name}'"}, status_code=400)
+    project_dir = _workspace_root / "projects" / project_name
+    if project_dir.exists():
+        return JSONResponse({"ok": False, "error": f"Project '{project_name}' already exists"}, status_code=409)
+    try:
+        proc = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                "git", "clone", body.repo_url, str(project_dir),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            ),
+            timeout=120,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            # Clean up partial clone
+            if project_dir.exists():
+                shutil.rmtree(project_dir, ignore_errors=True)
+            return JSONResponse({"ok": False, "error": stderr.decode(errors="replace").strip()}, status_code=500)
+        # Deploy project template files inside the cloned repo
+        from openclaw.installer.template_deployer import deploy_project_files, write_project_metadata
+        (project_dir / "tickets" / "open").mkdir(parents=True, exist_ok=True)
+        (project_dir / "tickets" / "closed").mkdir(parents=True, exist_ok=True)
+        deploy_project_files(project_dir, project_name)
+        write_project_metadata(project_dir, "github", remote_url=body.repo_url)
+        return JSONResponse({"ok": True, "name": project_name})
+    except asyncio.TimeoutError:
+        if project_dir.exists():
+            shutil.rmtree(project_dir, ignore_errors=True)
+        return JSONResponse({"ok": False, "error": "Clone timed out after 120 seconds"}, status_code=504)
+    except Exception as e:
+        if project_dir.exists():
+            shutil.rmtree(project_dir, ignore_errors=True)
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 

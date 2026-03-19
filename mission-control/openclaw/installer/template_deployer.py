@@ -593,6 +593,33 @@ def deploy_workspace_files(
     return written, agents, context["team_name"]
 
 
+def write_project_metadata(
+    project_path: Path,
+    source: str = "local",
+    remote_url: str | None = None,
+) -> None:
+    """Write .openclaw-project.json with project origin metadata."""
+    meta = {
+        "source": source,
+        "remote_url": remote_url,
+        "created": date.today().isoformat(),
+    }
+    (project_path / ".openclaw-project.json").write_text(
+        json.dumps(meta, indent=2), encoding="utf-8"
+    )
+
+
+def read_project_metadata(project_path: Path) -> dict:
+    """Read .openclaw-project.json, with safe defaults for legacy projects."""
+    meta_file = project_path / ".openclaw-project.json"
+    if meta_file.exists():
+        try:
+            return json.loads(meta_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {"source": "local", "remote_url": None, "created": None}
+
+
 def deploy_project_files(
     project_path: Path,
     project_name: str,

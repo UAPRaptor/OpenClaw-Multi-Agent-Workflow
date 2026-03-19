@@ -1,0 +1,37 @@
+# {{ ticket_id }} — {{ title }}
+
+**Type:** EPIC
+**Priority:** {{ priority }}
+**Owner:** {{ found_by }}
+**Status:** {{ status }}
+**Created:** {{ created_date }}
+**Updated:** {{ updated_date }}
+
+---
+
+## Goal
+
+{{ description }}
+
+---
+
+## Child Tickets
+
+| Ticket | Title | Status |
+|--------|-------|--------|
+| — | — | — |
+
+---
+
+## Acceptance Criteria
+
+- [ ] All child tickets closed
+- [ ] [Additional criterion]
+
+---
+
+## Status History
+
+| Date | Status | Agent | Note |
+|------|--------|-------|------|
+| {{ created_date }} | proposed | {{ found_by }} | Epic created |

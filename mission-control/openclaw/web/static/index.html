@@ -56,6 +56,7 @@
       align-items: center; justify-content: center;
     }
     .agent-modal-overlay.open { display: flex; }
+    .tab-btn.active { border-bottom-color: var(--accent) !important; font-weight: 600; }
     .agent-modal {
       background: var(--bg-card); border: 1px solid var(--border);
       border-radius: var(--radius); padding: 24px; width: 480px;
@@ -331,22 +332,20 @@
           <span>Active Project</span>
           <div style="display:flex;gap:6px;align-items:center;">
             <select id="projectSelect" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;padding:3px 8px;" onchange="switchProject(this.value)"></select>
-            <button class="btn btn-ghost" style="padding:3px 10px;font-size:12px;" onclick="showNewProjectInput()">+ New</button>
+            <button class="btn btn-ghost" style="padding:3px 10px;font-size:12px;" onclick="showNewProjectModal()">+ New</button>
           </div>
         </div>
         <div class="project-banner" id="projectBanner">
           <p style="color:var(--text-muted);font-size:13px">No project active</p>
         </div>
-        <div id="newProjectRow" style="display:none;margin-top:8px;gap:6px;align-items:center;">
-          <input id="newProjectName" type="text" placeholder="project-name" style="flex:1;padding:4px 8px;font-size:12px;">
-          <button class="btn btn-primary" style="padding:4px 12px;font-size:12px;" onclick="createProject()">Create</button>
-          <button class="btn btn-ghost" style="padding:4px 8px;font-size:12px;" onclick="hideNewProjectInput()">Cancel</button>
-        </div>
       </div>
 
       <!-- ── Ticket Board (full-width, below active project) ── -->
       <div class="card" style="margin-top:16px;">
-        <div class="card-title">Ticket Board</div>
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>Ticket Board</span>
+          <button class="btn btn-ghost" style="padding:3px 10px;font-size:12px;" onclick="showNewTicketModal()">+ New Ticket</button>
+        </div>
         <div class="kanban" id="kanbanBoard"></div>
       </div>
 
@@ -504,6 +503,96 @@
         <textarea class="chat-input" id="chatInput" placeholder="Type a message…" rows="1"
           onkeydown="chatInputKeydown(event)" oninput="chatInputResize(this)"></textarea>
         <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">↑</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── New Project Modal ── -->
+  <div class="agent-modal-overlay" id="newProjectOverlay" style="display:none;" onclick="closeNewProjectModal(event)">
+    <div class="agent-modal" style="max-width:520px;">
+      <div class="agent-modal-header">
+        <div class="agent-modal-title">New Project</div>
+        <button class="agent-modal-close" onclick="closeNewProjectModal()">&times;</button>
+      </div>
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:12px;">
+        <button id="projTabLocal" class="tab-btn active" onclick="switchProjectTab('local')" style="flex:1;padding:8px;font-size:13px;background:none;border:none;color:var(--text);cursor:pointer;border-bottom:2px solid transparent;">Local</button>
+        <button id="projTabGithub" class="tab-btn" onclick="switchProjectTab('github')" style="flex:1;padding:8px;font-size:13px;background:none;border:none;color:var(--text);cursor:pointer;border-bottom:2px solid transparent;">GitHub</button>
+      </div>
+      <!-- Local panel -->
+      <div id="projPanelLocal">
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input id="newProjectName" type="text" placeholder="project-name" style="flex:1;padding:6px 10px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+          <button id="createLocalBtn" class="btn btn-primary" style="padding:6px 16px;font-size:13px;" onclick="createProject()">Create</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Creates a new project with template files (spec, milestones, tickets).</div>
+      </div>
+      <!-- GitHub panel -->
+      <div id="projPanelGithub" style="display:none;">
+        <input id="ghRepoSearch" type="text" placeholder="Search your repos..." oninput="filterGhRepos(this.value)" style="width:100%;padding:6px 10px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);margin-bottom:8px;box-sizing:border-box;">
+        <div id="ghRepoList" style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;"></div>
+        <div id="ghRepoSelected" style="display:none;margin-top:10px;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:6px;">
+          <div style="font-size:13px;margin-bottom:6px;">Selected: <strong id="ghSelectedName"></strong></div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input id="ghCloneName" type="text" placeholder="name override (optional)" style="flex:1;padding:5px 8px;font-size:12px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+            <button id="ghCloneBtn" class="btn btn-primary" style="padding:6px 14px;font-size:12px;white-space:nowrap;" onclick="cloneGithubRepo()">Clone & Create Project</button>
+          </div>
+        </div>
+        <div id="ghError" style="display:none;margin-top:8px;padding:8px;background:#e74c3c20;border:1px solid #e74c3c;border-radius:4px;font-size:12px;color:#e74c3c;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── New Ticket Modal ── -->
+  <div class="agent-modal-overlay" id="newTicketOverlay" style="display:none;" onclick="closeNewTicketModal(event)">
+    <div class="agent-modal" style="max-width:480px;">
+      <div class="agent-modal-header">
+        <div class="agent-modal-title">New Ticket</div>
+        <button class="agent-modal-close" onclick="closeNewTicketModal()">&times;</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;gap:8px;">
+          <div style="flex:1;">
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Type</label>
+            <select id="ticketType" onchange="toggleSeverityField()" style="width:100%;padding:6px 8px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+              <option value="TASK">TASK</option>
+              <option value="BUG">BUG</option>
+              <option value="FEAT">FEAT</option>
+              <option value="QUESTION">QUESTION</option>
+              <option value="EPIC">EPIC</option>
+            </select>
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Priority</label>
+            <select id="ticketPriority" style="width:100%;padding:6px 8px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+              <option value="D1">D1 - Critical</option>
+              <option value="D2">D2 - High</option>
+              <option value="D3" selected>D3 - Medium</option>
+              <option value="D4">D4 - Low</option>
+            </select>
+          </div>
+        </div>
+        <div id="ticketSeverityRow" style="display:none;">
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Severity (BUGs only)</label>
+          <select id="ticketSeverity" style="width:100%;padding:6px 8px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+            <option value="D1">D1 - Critical</option>
+            <option value="D2">D2 - High</option>
+            <option value="D3" selected>D3 - Medium</option>
+            <option value="D4">D4 - Low</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Title</label>
+          <input id="ticketTitle" type="text" placeholder="Brief description of the work" style="width:100%;padding:6px 10px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Description</label>
+          <textarea id="ticketDesc" rows="3" placeholder="Detailed description (optional)" style="width:100%;padding:6px 10px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);resize:vertical;box-sizing:border-box;font-family:inherit;"></textarea>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Epic (optional)</label>
+          <input id="ticketEpic" type="text" placeholder="EPIC-001" style="width:100%;padding:6px 10px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);box-sizing:border-box;">
+        </div>
+        <button id="ticketSubmitBtn" class="btn btn-primary" style="padding:8px 16px;font-size:13px;align-self:flex-end;" onclick="submitNewTicket()">Create Ticket</button>
       </div>
     </div>
   </div>

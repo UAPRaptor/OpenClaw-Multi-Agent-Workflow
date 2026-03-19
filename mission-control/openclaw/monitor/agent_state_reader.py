@@ -195,13 +195,24 @@ def read_agent_activity(workspace_root: Path, agents: list[str]) -> dict:
                     model = m.group(1)
                     break
 
+        # Created timestamp — from IDENTITY.md file creation time
+        created_at = None
+        if identity_path.exists():
+            try:
+                ctime = identity_path.stat().st_birthtime  # macOS
+            except AttributeError:
+                ctime = identity_path.stat().st_ctime  # fallback
+            created_at = datetime.fromtimestamp(ctime, tz=timezone.utc).strftime("%Y-%m-%d")
+
         result[role] = {
             "agentId": role,                                   # OpenClaw agent identifier
             "role": role,                                      # Workflow role key
+            "role_label": ROLE_LABELS.get(role, role.title()), # Human-readable role title
             "displayName": characters.get(role, "—"),         # Persona name (e.g. "Splinter")
             "character": characters.get(role, "—"),           # (kept for backwards compatibility)
             "status": status,
             "last_active": last_active,
+            "created_at": created_at,
             "workspace_path": str(workspace_root),
             "launcher_sh": launcher_sh,
             "launcher_bat": launcher_bat,

@@ -13,6 +13,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 import json
 import shutil
+import uuid
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
@@ -41,6 +42,7 @@ def register_openclaw_agents(agents: list[dict]) -> list[str]:
     created = []
     agent_ids = []
     workspace_path = None
+    workflow_id = uuid.uuid4().hex[:12]  # shared across all agents in this install batch
 
     for agent in agents:
         role = agent["role"]
@@ -55,6 +57,7 @@ def register_openclaw_agents(agents: list[dict]) -> list[str]:
         context = {
             **agent,
             "install_date": date.today().isoformat(),
+            "workflow_id": workflow_id,
         }
         rendered = tmpl.render(**context)
         identity_path = agent_dir / "IDENTITY.md"

@@ -312,12 +312,14 @@ function renderAgents(agents) {
 
   grid.innerHTML = entries.map(a => `
     <div class="agent-card">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;min-width:0;">
+          <div class="agent-card-char">${escHtml(a.character || '—')}</div>
+          <div class="agent-card-role">${escHtml(a.role_label || a.role || '')}</div>
+        </div>
         <button class="agent-cog" onclick="showAgentDetails('${escHtml(a.role || '')}')" title="Agent details">⚙</button>
       </div>
-      <div class="agent-card-role">${escHtml(a.role || '')}</div>
-      <div class="agent-card-char">${escHtml(a.character || '—')}</div>
-      <div class="agent-card-status">
+      <div class="agent-card-status" style="margin-top:8px;">
         <span class="dot dot-${a.status || 'inactive'}"></span>
         <span>${statusLabel(a.status)}</span>
       </div>
@@ -327,6 +329,7 @@ function renderAgents(agents) {
         <button class="agent-action-btn" onclick="verifyAgent('${escHtml(a.role || '')}')" title="Verify — sends a test message to check if this agent is responding">✓</button>
         <button class="agent-action-btn" onclick="setAsMain('${escHtml(a.role || '')}')" title="Set as Main — makes this agent the default chat entrypoint in the OpenClaw app">★</button>
       </div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:6px;font-family:monospace;opacity:0.6;">${escHtml(a.agentId || a.role || '')}</div>
     </div>
   `).join('') + `
     <div class="agent-card" style="display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.5;transition:opacity 0.15s" onclick="showAddAgentModal()" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='0.5'" title="Add a new agent">
@@ -352,9 +355,13 @@ function showAgentDetails(role) {
     : '<span class="badge-warn">✘ Not registered</span>';
 
   const rows = [
+    ['Agent ID',            `<code>${escHtml(a.agentId || a.role || '')}</code>`],
+    ['Display Name',        escHtml(a.character || '—')],
+    ['Role',                escHtml(a.role_label || a.role || '')],
     ['Status',              statusLabel(a.status)],
     ['Last Active',         a.last_active ? timeAgo(a.last_active) : '—'],
     ['Model',               a.model || '—'],
+    ['Created',             a.created_at || '—'],
     ['Workspace',           a.workspace_path || '—'],
     ['Launcher (Mac/Linux)', a.launcher_sh  || '—'],
     ['Launcher (Windows)',   a.launcher_bat || '—'],

@@ -41,3 +41,10 @@
 | 2026-03-18 | v0.5.1 — Installer safety & flexibility: Cancel buttons, Dashboard Only install mode, destructive mode warnings on upgrade/replace. |
 | 2026-03-18 | v0.5.2 — Upgrade preserves MEMORY.md; Active Project + Ticket Board full-width layout; v0.5.x roadmap added. |
 | 2026-03-18 | v0.5.3 — Doctor button in gateway bar: runs `openclaw doctor --repair --non-interactive` via POST /api/doctor; ANSI-stripped output shown in gateway banner; 30s timeout. |
+| 2026-03-19 | v0.5.4 — Agent card redesign: displayName as primary label, role_label secondary, agentId in footer. Provenance tracking: createdAt (st_birthtime/st_ctime), agentId, workflowId (uuid4 hex) in IDENTITY.md template. |
+| 2026-03-19 | v0.5.5 — Enhanced kanban: severity badges (D1-D4 color-coded), description snippets, found_by field from ticket markdown. Installed Skills card: parses `openclaw skills list` CLI table output (ANSI-stripped regex); collapsible ready/missing sections. |
+| 2026-03-19 | v0.5.6 — Project switching: dropdown in Active Project card; new project creation with template deployment. GET /api/projects, POST /api/projects/switch, POST /api/projects/create endpoints. |
+| 2026-03-19 | v0.5.7 — Workspace backup/restore: timestamped shutil.copytree snapshots to ~/.openclaw-mission-control/backups/. Save/Restore/Delete from dashboard. Auto-backup before upgrade/replace installs. |
+| 2026-03-19 | v0.5.8 — Pydantic request validation: models.py with BaseModel classes for all POST endpoints (InstallRequest, ChatSendRequest, AddAgentRequest, etc.). Opt-in bearer token auth via --auth CLI flag (secrets.token_urlsafe(32)). Auth middleware on /api/ routes. |
+| 2026-03-19 | v0.6.0 — pytest suite: 34 tests across 4 modules (state_store, template_deployer, agent_state_reader, alert_engine). All passing. Fixed check_security→check_file_event method name in test. |
+| 2026-03-19 | v1.0.0 — Full README.md with quick start, features, security notes, packaging instructions, repo structure. QUICKSTART.txt for release zip (non-technical users). All v0.5.4–v1.0.0 pushed to GitHub. |

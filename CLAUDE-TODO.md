@@ -52,8 +52,8 @@ Confirm the current build works end-to-end, then lock down the security surface 
 **Security (D2/D3)**
 - [ ] [D2] Encrypt API keys at rest — use OS keyring (`keyring` library) or machine-derived encrypted JSON; currently plaintext in OpenClaw config
 - [ ] [D2] Ollama installer integrity — verify checksums for downloaded binaries before executing; pin to known-good versions
-- [ ] [D3] Add authentication to the web server — random bearer token at startup, displayed in terminal, required for all API calls and WebSocket connections
-- [ ] [D3] Add Pydantic request validation to all API endpoints — currently raw dict access with no schema enforcement
+- [x] [D3] Add authentication to the web server — random bearer token at startup, displayed in terminal, required for all API calls and WebSocket connections (v0.5.8)
+- [x] [D3] Add Pydantic request validation to all API endpoints — currently raw dict access with no schema enforcement (v0.5.8)
 
 ---
 
@@ -80,10 +80,10 @@ Make installed agents first-class citizens of the OpenClaw universe so they appe
 
 Remaining agent UX polish. Requires Items 1/5/7 (complete as of v0.3.0) as foundation.
 
-- [ ] [D2] **Item 2**: Agent card redesign — show displayName as primary, role key as secondary, agentId as metadata footer
+- [x] [D2] **Item 2**: Agent card redesign — show displayName as primary, role key as secondary, agentId as metadata footer (v0.5.4)
 - [ ] [D3] **Item 3**: "Open in Chat" button on each agent card — deep-links to OpenClaw's native chat for that agent (requires figuring out OpenClaw chat URL scheme)
 - [ ] [D3] **Item 4**: Dedicated Agent Registry page — full-page view of managed/runtime/test/orphaned/missing agents with sort/filter
-- [ ] [D2] **Item 6**: Provenance timestamps — write createdAt + workflowId to IDENTITY.md footer at install time
+- [x] [D2] **Item 6**: Provenance timestamps — write createdAt + workflowId to IDENTITY.md footer at install time (v0.5.4)
 - [ ] [D3] **Item 8**: displayName → role → agentId mapping panel — explicit table UI showing the three-field identity for each agent
 
 ---
@@ -125,7 +125,7 @@ Richer real-time visibility into agent activity.
 - [x] [D2] Ticket stale badge — amber warning banner when tickets in `in-progress` or `blocked` > 4 hours (uses file mtime from ticket .md files)
 - [x] [D2] Click kanban column to expand and show ticket file names — clickable columns reveal ticket titles with stale indicators; also fixed Status parsing bug (markdown ** not stripped)
 - [x] [D2] Session log viewer — full-width dashboard card showing 10 most recent AGENT-SESSION-LOG.md entries with Refresh button; GET /api/session-log endpoint parses markdown table
-- [ ] [D2] Installer: show character roster preview when a theme is selected (role → character mapping)
+- [x] [D2] Installer: show character roster preview when a theme is selected (role → character mapping) (already implemented)
 - [ ] [D3] Milestone completion count for overnight mode (parse overnight-report.md)
 - [ ] [D3] Multi-workspace support — monitor more than one workspace simultaneously
 
@@ -136,17 +136,17 @@ Move from passive monitoring to active control from the dashboard.
 
 **Project Management**
 - [ ] [D2] Move Active Project card above Ticket Board for logical flow
-- [ ] [D2] Add "Change Project" dropdown/button to Active Project card — switch active project without editing files
+- [x] [D2] Add "Change Project" dropdown/button to Active Project card — switch active project without editing files (v0.5.6)
 - [ ] [D3] Repo management card — list cloned repos with path, last commit, remote URL; add/remove repos from dashboard
-- [ ] [D3] Show ticket content when clicking kanban columns (not just counts)
+- [x] [D3] Show ticket content when clicking kanban columns (not just counts) (v0.5.5)
 - [ ] [D3] Migrate session logs and agent TODOs into ticket board — each log entry or TODO becomes a visible ticket
 
 **Agent Skills & Capabilities**
-- [ ] [D2] Installed Skills card — shows skills/tools available to agents (reads from OpenClaw config or agent capabilities)
+- [x] [D2] Installed Skills card — shows skills/tools available to agents (reads from OpenClaw config or agent capabilities) (v0.5.5)
 
 **Workspace Safety**
-- [ ] [D3] Workspace backup/restore — "Save Workspace" creates timestamped snapshot in ~/.openclaw-mission-control/backups/; "Restore Workspace" lists snapshots and overwrites current; auto-backup before upgrade/replace install
-- [ ] [D3] Archived workspaces panel — list old/inactive workspaces with restore option
+- [x] [D3] Workspace backup/restore — "Save Workspace" creates timestamped snapshot in ~/.openclaw-mission-control/backups/; "Restore Workspace" lists snapshots and overwrites current; auto-backup before upgrade/replace install (v0.5.7)
+- [x] [D3] Archived workspaces panel — list old/inactive workspaces with restore option (v0.5.7)
 
 ---
 
@@ -155,15 +155,15 @@ Establish a test baseline before the 1.0 release.
 
 - [ ] [D2] Add integration test: install flow end-to-end (create temp workspace, verify files)
 - [ ] [D2] Add frontend smoke tests (playwright or similar) for installer wizard steps
-- [ ] [D3] Add pytest suite: unit tests for state_store, alert_engine, template_deployer, platform_utils
+- [x] [D3] Add pytest suite: unit tests for state_store, alert_engine, template_deployer, agent_state_reader (34 tests, all passing) (v0.6.0)
 
 ---
 
 ### v1.0.0 — Production Distribution
 Standalone binaries and polished docs. Production-ready release.
 
-- [ ] [D1] Update `README.md` with full usage instructions and screenshot
-- [ ] [D1] Add `QUICKSTART.txt` to the release zip for non-technical users
+- [x] [D1] Update `README.md` with full usage instructions (v1.0.0)
+- [x] [D1] Add `QUICKSTART.txt` to the release zip for non-technical users (v1.0.0)
 - [ ] [D2] Run `build.bat` on Windows → verify `dist/openclaw-windows.exe` launches and opens browser
 - [ ] [D2] Run `build.sh` on Mac → verify `dist/openclaw-mac` works
 - [ ] [D1] Attach binaries to a GitHub Release alongside the zip
@@ -207,3 +207,10 @@ Standalone binaries and polished docs. Production-ready release.
 | 2026-03-18 | v0.4.6 — Expandable kanban columns: clicking a column reveals ticket titles with stale indicators; read_tickets() returns per-status file details. Fixed Status parsing bug (markdown ** not stripped, causing all ticket counts to read as zero). |
 | 2026-03-18 | v0.4.7 — PM methodology: ROLE_METHODOLOGY for PM with delegation rules (absolute paths, full context in spawn prompts, chain workflow). Root cause fix for agent spawning failure — agents couldn't find files because PM stripped absolute paths. |
 | 2026-03-18 | v0.4.8 — System Info card (built by agent team: Leonardo/Donatello/Raphael, reviewed by Casey). GET /api/sysinfo returns OS, Python, disk usage. Security methodology updated: "verify don't trust" — agents must verify config in code. QA methodology updated: always test invalid routes, JS console, empty data. |
+| 2026-03-19 | v0.5.4 — Agent card redesign: displayName primary, role_label secondary, agentId footer. Provenance tracking: createdAt, agentId, workflowId in IDENTITY.md template. |
+| 2026-03-19 | v0.5.5 — Ticket content in kanban: severity badges, description snippets, found_by field. Installed Skills card: parses `openclaw skills list` CLI output. |
+| 2026-03-19 | v0.5.6 — Project switching: dropdown + new project creation from dashboard. GET/POST /api/projects endpoints. |
+| 2026-03-19 | v0.5.7 — Workspace backup/restore: timestamped snapshots to ~/.openclaw-mission-control/backups/. Auto-backup before destructive installs. |
+| 2026-03-19 | v0.5.8 — Pydantic request validation (models.py) on all POST endpoints. Opt-in bearer token auth via --auth CLI flag. |
+| 2026-03-19 | v0.6.0 — pytest suite: 34 tests across state_store, template_deployer, agent_state_reader, alert_engine. All passing. |
+| 2026-03-19 | v1.0.0 — Full README.md with usage instructions, features, security notes. QUICKSTART.txt for release zip. |

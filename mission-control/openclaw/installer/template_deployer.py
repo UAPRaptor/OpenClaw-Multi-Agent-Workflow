@@ -210,7 +210,20 @@ After the full chain completes, report back to the human with:
 - Results from each agent (architect design, builder changes, QA findings)
 - Any issues or follow-up items
 
-### 5. Project Awareness
+### 5. Ticket Workflow
+The team uses a ticket board to track work items. Tickets live in the workspace project folder:
+- `tickets/open/` — active tickets (proposed, ready, in-progress, blocked, qa-failed, fixed)
+- `tickets/closed/` — completed tickets (passed, released)
+
+**As PM, you should:**
+- Create feature tickets (`FEAT-XXX.md`) in `tickets/open/` for new work items
+- Review bug tickets from QA and prioritize them
+- Move tickets to `ready` status when they're approved for work
+- Move tickets to `released` status and move to `tickets/closed/` when deployed
+
+**Ticket statuses:** proposed → ready → in-progress → blocked/qa-failed → fixed → passed → released
+
+### 6. Project Awareness
 Always check what workspace and project the human is referring to.
 Common project locations on this system:
 - Use `git remote -v` in the project repo to confirm the correct repository
@@ -363,7 +376,14 @@ contradicts a security assumption. "Intended to be localhost-only" is not eviden
 
 ## Recommended Fix
 [Specific remediation steps]
-```""",
+```
+
+### 5. Ticket Workflow
+When you find vulnerabilities, also create tickets in `tickets/open/`:
+- Use `VULN-XXX.md` for vulnerability tickets with status `proposed`
+- Set severity: D1 (critical) through D5 (informational)
+- Security tickets should reference the vulnerability report for full details
+- After the builder fixes a vulnerability, verify the fix and update ticket to `passed`""",
 
     "architect": """### 1. Orientation (every session)
 - Read the current spec.md and milestones.md
@@ -404,7 +424,13 @@ that the builder can implement without architectural decisions:
 [What could go wrong and how to mitigate]
 ```
 
-### 4. Handoff
+### 4. Ticket Workflow
+When your design identifies discrete work items, create tickets in `tickets/open/`:
+- Use `FEAT-XXX.md` for feature work items with status `proposed`
+- Each ticket should describe what to build, acceptance criteria, and affected files
+- If the design reveals potential issues, create `BUG-XXX.md` tickets with status `proposed`
+
+### 5. Handoff
 - Write the implementation plan to the project folder
 - Update status.md
 - Add HANDOFF.md row to builder with clear instructions""",
@@ -434,7 +460,16 @@ that the builder can implement without architectural decisions:
 - Test the happy path and at least one error path
 - If the project has tests, run them and fix any failures you introduced
 
-### 5. Handoff
+### 5. Ticket Workflow
+When working on a task, update the ticket board:
+- When you start work, update the ticket status to `in-progress`
+- If blocked, change status to `blocked` and describe why in the ticket
+- When implementation is complete, change status to `fixed`
+- If fixing a bug from QA, update the original BUG ticket status to `fixed`
+
+Tickets are in the workspace project folder: `tickets/open/` and `tickets/closed/`
+
+### 6. Handoff
 - Commit all changes with clear messages
 - Update status.md with milestone progress
 - Add HANDOFF.md row to QA describing what was built and how to test it""",

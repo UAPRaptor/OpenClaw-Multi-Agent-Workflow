@@ -297,9 +297,9 @@ function renderAgents(agents) {
       </div>
       ${a.last_active ? `<div class="agent-card-time">${timeAgo(a.last_active)}</div>` : ''}
       <div class="agent-card-actions">
-        <button class="agent-action-btn" onclick="chatWithAgent('${escHtml(a.role || '')}')" title="Open chat">💬</button>
-        <button class="agent-action-btn" onclick="verifyAgent('${escHtml(a.role || '')}')" title="Verify responsive">✓</button>
-        <button class="agent-action-btn" onclick="setAsMain('${escHtml(a.role || '')}')" title="Set as primary chat agent">★</button>
+        <button class="agent-action-btn" onclick="chatWithAgent('${escHtml(a.role || '')}')" title="Open chat — send messages to this agent from Mission Control">💬</button>
+        <button class="agent-action-btn" onclick="verifyAgent('${escHtml(a.role || '')}')" title="Verify — sends a test message to check if this agent is responding">✓</button>
+        <button class="agent-action-btn" onclick="setAsMain('${escHtml(a.role || '')}')" title="Set as Main — makes this agent the default chat entrypoint in the OpenClaw app">★</button>
       </div>
     </div>
   `).join('') + `

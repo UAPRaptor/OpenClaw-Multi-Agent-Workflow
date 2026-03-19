@@ -122,7 +122,7 @@
       height: 38px;
       display: flex;
       align-items: center;
-      gap: 12px;
+      justify-content: space-between;
       font-size: 12px;
     }
     .gateway-status { display: flex; align-items: center; gap: 8px; }
@@ -268,7 +268,7 @@
       <span id="versionBadge" style="font-size:11px;color:var(--text-muted);background:var(--border);padding:2px 7px;border-radius:10px;"></span>
     </div>
     <div style="display:flex;align-items:center;gap:16px;">
-      <div class="conn-status" id="connStatus">
+      <div class="conn-status" id="connStatus" title="WebSocket connection to Mission Control server — enables real-time dashboard updates">
         <span class="conn-dot conn-off" id="connDot"></span>
         <span id="connLabel">Connecting...</span>
       </div>
@@ -280,19 +280,18 @@
   </header>
 
   <div class="gateway-bar" id="gatewayBar">
-    <div class="gateway-status">
+    <div style="display:flex;align-items:center;gap:8px">
       <span class="gw-dot" id="gwDot"></span>
       <span id="gwLabel">Gateway</span>
       <span class="gw-checked" id="gwChecked"></span>
+      <div class="gateway-actions" style="margin-left:8px">
+        <button id="gwBtnStart" class="gw-btn" onclick="gatewayAction('start')">Start</button>
+        <button id="gwBtnStop" class="gw-btn gw-btn-danger" onclick="gatewayAction('stop')">Stop</button>
+        <button id="gwBtnRestart" class="gw-btn" onclick="gatewayAction('restart')">Restart</button>
+        <button id="gwBtnRefresh" class="gw-btn gw-btn-ghost" onclick="refreshGatewayStatus()" title="Refresh gateway status">↻</button>
+      </div>
     </div>
-    <div class="gateway-actions">
-      <button id="gwBtnStart" class="gw-btn" onclick="gatewayAction('start')">Start</button>
-      <button id="gwBtnStop" class="gw-btn gw-btn-danger" onclick="gatewayAction('stop')">Stop</button>
-      <button id="gwBtnRestart" class="gw-btn" onclick="gatewayAction('restart')">Restart</button>
-      <button id="gwBtnRefresh" class="gw-btn gw-btn-ghost" onclick="refreshGatewayStatus()">↻</button>
-      <span class="gw-divider"></span>
-      <button id="mcBtnRestart" class="gw-btn gw-btn-ghost" onclick="restartMissionControl()" title="Restart Mission Control server">↺ Restart MC</button>
-    </div>
+    <button id="mcBtnRestart" class="gw-btn gw-btn-ghost" onclick="restartMissionControl()" title="Restart Mission Control server">↺ Restart MC</button>
   </div>
 
   <div class="gateway-banner" id="gatewayBanner" style="display:none">

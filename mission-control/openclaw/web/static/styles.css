@@ -89,11 +89,12 @@ a:hover { text-decoration: underline; }
   border-radius: 50%;
   margin-right: 6px;
 }
-.dot-active  { background: var(--green); box-shadow: 0 0 6px var(--green); }
-.dot-idle    { background: var(--text-muted); }
-.dot-stalled { background: var(--yellow); }
-.dot-offline { background: var(--text-muted); }
-.dot-unknown { background: var(--text-muted); }
+.dot-active   { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dot-idle     { background: var(--text-muted); }
+.dot-stalled  { background: var(--yellow); }
+.dot-inactive { background: var(--text-muted); }
+.dot-offline  { background: var(--text-muted); }
+.dot-unknown  { background: var(--text-muted); }
 
 /* ── Buttons ── */
 .btn {

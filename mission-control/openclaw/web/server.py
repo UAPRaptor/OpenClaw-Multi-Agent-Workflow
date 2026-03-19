@@ -961,6 +961,82 @@ async def verify_agent(role: str) -> JSONResponse:
         }, status_code=500)
 
 
+@app.post("/api/agents/add")
+async def add_agent(request: Request) -> JSONResponse:
+    """
+    Adds a new custom agent role.
+    Body: {role: str, name: str, label: str}
+    Creates IDENTITY.md and registers in openclaw.json + AGENTS.md.
+    """
+    import re
+    body = await request.json()
+    role = body.get("role", "").strip().lower()
+    name = body.get("name", "").strip()
+    label = body.get("label", "").strip() or name
+
+    # Validate role ID
+    if not role or not re.match(r"^[a-z][a-z0-9-]{0,29}$", role):
+        return JSONResponse(
+            {"ok": False, "error": "Role ID must be lowercase letters/numbers/hyphens, 1-30 chars."},
+            status_code=400,
+        )
+    if not name:
+        return JSONResponse(
+            {"ok": False, "error": "Display name is required."},
+            status_code=400,
+        )
+
+    from openclaw.installer.agent_registrar import register_openclaw_agents
+
+    # Check if agent already exists
+    agent_dir = Path.home() / ".openclaw" / "agents" / role
+    if agent_dir.exists() and (agent_dir / "IDENTITY.md").exists():
+        return JSONResponse(
+            {"ok": False, "error": f"Agent '{role}' already exists."},
+            status_code=409,
+        )
+
+    # Build minimal agent dict compatible with register_openclaw_agents
+    workspace_path = str(
+        Path(_workspace or Path.home() / "Documents" / "openclaw-workspace")
+    )
+    agent = {
+        "role": role,
+        "agentId": role,
+        "displayName": name,
+        "character": name,
+        "role_label": label,
+        "philosophy": "",
+        "decision_style": "",
+        "responsibilities": [],
+        "outputs": [],
+        "model": "claude-sonnet-4-6",
+        "receives_from": "pm",
+        "hands_to": "pm",
+        "start_conditions": [],
+        "methodology": "",
+        "workspace_path": workspace_path,
+    }
+
+    try:
+        created = register_openclaw_agents([agent])
+
+        # Also append to AGENTS.md in the workspace
+        ws = Path(workspace_path)
+        agents_md = ws / "AGENTS.md"
+        if agents_md.exists():
+            entry = f"\n### {label}\n**Character:** {name}\n**Role:** {role}\n**Model:** claude-sonnet-4-6\n\n"
+            with open(agents_md, "a", encoding="utf-8") as f:
+                f.write(entry)
+
+        return JSONResponse({"ok": True, "created": created})
+    except Exception as e:
+        return JSONResponse(
+            {"ok": False, "error": f"Failed to add agent: {str(e)}"},
+            status_code=500,
+        )
+
+
 @app.get("/api/gateway/status")
 async def get_gateway_status() -> JSONResponse:
     """

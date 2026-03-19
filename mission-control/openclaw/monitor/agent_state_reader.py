@@ -163,7 +163,7 @@ def read_agent_activity(workspace_root: Path, agents: list[str]) -> dict:
         last_mod = _find_last_modified(workspace_root, role)
 
         if last_mod is None:
-            status = "offline"
+            status = "inactive"
             last_active = None
         else:
             age_minutes = (now - last_mod) / 60
@@ -171,10 +171,8 @@ def read_agent_activity(workspace_root: Path, agents: list[str]) -> dict:
                 status = "active"
             elif age_minutes < 30:
                 status = "idle"
-            elif age_minutes < 60 * 24:
-                status = "offline"
             else:
-                status = "offline"
+                status = "inactive"
             last_active = datetime.fromtimestamp(last_mod, tz=timezone.utc).isoformat()
 
         # Launcher paths

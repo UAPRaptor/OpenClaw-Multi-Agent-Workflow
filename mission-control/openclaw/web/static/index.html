@@ -122,7 +122,7 @@
       height: 38px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 12px;
       font-size: 12px;
     }
     .gateway-status { display: flex; align-items: center; gap: 8px; }
@@ -274,7 +274,7 @@
       </div>
       <nav>
         <a href="/monitor" class="active">Dashboard</a>
-        <a href="/install">New Workspace</a>
+        <a href="/install">New Workspace <span title="Create or configure an agent workspace — sets up project templates, agent identities, and launcher scripts for a new team of OpenClaw agents" style="cursor:help;opacity:0.5;font-size:11px">ⓘ</span></a>
       </nav>
     </div>
   </header>
@@ -417,6 +417,32 @@
         <button class="agent-modal-close" onclick="closeAgentModal()">✕</button>
       </div>
       <div id="agentModalBody"></div>
+    </div>
+  </div>
+
+  <!-- Add Agent modal -->
+  <div class="agent-modal-overlay" id="addAgentOverlay" onclick="closeAddAgentModal(event)">
+    <div class="agent-modal" id="addAgentModal">
+      <div class="agent-modal-header">
+        <div>
+          <div class="agent-modal-title">Add New Agent</div>
+          <div class="agent-modal-role">Register a custom agent role</div>
+        </div>
+        <button class="agent-modal-close" onclick="closeAddAgentModal()">✕</button>
+      </div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+        <label style="font-size:12px;color:var(--text-muted)">Role ID <span style="opacity:0.5">(lowercase, no spaces — e.g. "graphics", "docs")</span>
+          <input id="addAgentRole" type="text" style="width:100%;margin-top:4px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px" placeholder="e.g. graphics">
+        </label>
+        <label style="font-size:12px;color:var(--text-muted)">Display Name
+          <input id="addAgentName" type="text" style="width:100%;margin-top:4px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px" placeholder="e.g. Banksy">
+        </label>
+        <label style="font-size:12px;color:var(--text-muted)">Role Label <span style="opacity:0.5">(human-readable title)</span>
+          <input id="addAgentLabel" type="text" style="width:100%;margin-top:4px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px" placeholder="e.g. Graphics Designer">
+        </label>
+        <div id="addAgentError" style="color:var(--red);font-size:12px;display:none"></div>
+        <button class="btn" style="align-self:flex-end;padding:6px 20px" onclick="submitAddAgent()">Add Agent</button>
+      </div>
     </div>
   </div>
 

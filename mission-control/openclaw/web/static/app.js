@@ -201,13 +201,61 @@ function renderAlerts(alerts) {
   const active = alerts.filter(a => !a.dismissed);
   if (!active.length) { panel.innerHTML = ''; return; }
 
-  panel.innerHTML = active.slice(0, 5).map(a => `
-    <div class="alert-strip alert-${a.level || 'info'}">
+  // Security alerts always show individually
+  const security = active.filter(a => a.level === 'security');
+  // Group non-security alerts into a collapsible summary
+  const other = active.filter(a => a.level !== 'security');
+
+  let html = security.map(a => `
+    <div class="alert-strip alert-security">
       <span>${levelIcon(a.level)}</span>
       <span><strong>${timeAgo(a.time)}</strong> — ${escHtml(a.message)}</span>
       <button class="alert-dismiss" onclick="dismissAlert('${a.id}')" title="Dismiss">×</button>
     </div>
   `).join('');
+
+  if (other.length === 1) {
+    html += `
+      <div class="alert-strip alert-${other[0].level || 'info'}">
+        <span>${levelIcon(other[0].level)}</span>
+        <span><strong>${timeAgo(other[0].time)}</strong> — ${escHtml(other[0].message)}</span>
+        <button class="alert-dismiss" onclick="dismissAlert('${other[0].id}')" title="Dismiss">×</button>
+      </div>`;
+  } else if (other.length > 1) {
+    const groupId = 'alertGroup';
+    html += `
+      <div class="alert-strip alert-warning" style="cursor:pointer" onclick="toggleAlertGroup()">
+        <span>⚠️</span>
+        <span><strong>${other.length} alerts</strong> — click to ${document.getElementById(groupId)?.style.display === 'block' ? 'hide' : 'expand'}</span>
+        <button class="alert-dismiss" onclick="event.stopPropagation();dismissAllAlerts([${other.map(a => `'${a.id}'`).join(',')}])" title="Dismiss all">×</button>
+      </div>
+      <div id="${groupId}" style="display:none">
+        ${other.slice(0, 10).map(a => `
+          <div class="alert-strip alert-${a.level || 'info'}" style="margin-top:0;border-top:1px solid rgba(255,255,255,0.05)">
+            <span>${levelIcon(a.level)}</span>
+            <span><strong>${timeAgo(a.time)}</strong> — ${escHtml(a.message)}</span>
+            <button class="alert-dismiss" onclick="event.stopPropagation();dismissAlert('${a.id}')" title="Dismiss">×</button>
+          </div>
+        `).join('')}
+      </div>`;
+  }
+
+  panel.innerHTML = html;
+}
+
+function toggleAlertGroup() {
+  const el = document.getElementById('alertGroup');
+  if (el) el.style.display = el.style.display === 'block' ? 'none' : 'block';
+}
+
+async function dismissAllAlerts(ids) {
+  for (const id of ids) await fetch(`/api/alerts/dismiss/${id}`);
+  if (lastState) {
+    for (const a of (lastState.alerts || [])) {
+      if (ids.includes(a.id)) a.dismissed = true;
+    }
+    render(lastState);
+  }
 }
 
 function levelIcon(level) {
@@ -244,7 +292,7 @@ function renderAgents(agents) {
       <div class="agent-card-role">${escHtml(a.role || '')}</div>
       <div class="agent-card-char">${escHtml(a.character || '—')}</div>
       <div class="agent-card-status">
-        <span class="dot dot-${a.status || 'unknown'}"></span>
+        <span class="dot dot-${a.status || 'inactive'}"></span>
         <span>${statusLabel(a.status)}</span>
       </div>
       ${a.last_active ? `<div class="agent-card-time">${timeAgo(a.last_active)}</div>` : ''}
@@ -254,11 +302,17 @@ function renderAgents(agents) {
         <button class="agent-action-btn" onclick="setAsMain('${escHtml(a.role || '')}')" title="Set as primary chat agent">★</button>
       </div>
     </div>
-  `).join('');
+  `).join('') + `
+    <div class="agent-card" style="display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.5;transition:opacity 0.15s" onclick="showAddAgentModal()" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='0.5'" title="Add a new agent">
+      <div style="text-align:center">
+        <div style="font-size:28px;line-height:1">+</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Add Agent</div>
+      </div>
+    </div>`;
 }
 
 function statusLabel(s) {
-  return { active: 'Active', idle: 'Idle', stalled: 'Stalled', offline: 'Offline', unknown: 'Offline' }[s] || 'Offline';
+  return { active: 'Active', idle: 'Idle', stalled: 'Stalled', inactive: 'Inactive', offline: 'Inactive', unknown: 'Inactive' }[s] || 'Inactive';
 }
 
 function showAgentDetails(role) {
@@ -295,6 +349,55 @@ function showAgentDetails(role) {
 function closeAgentModal(e) {
   if (e && e.target !== document.getElementById('agentModalOverlay')) return;
   document.getElementById('agentModalOverlay').classList.remove('open');
+}
+
+// ── Add Agent ──────────────────────────────────────────────────────────────
+
+function showAddAgentModal() {
+  document.getElementById('addAgentRole').value = '';
+  document.getElementById('addAgentName').value = '';
+  document.getElementById('addAgentLabel').value = '';
+  document.getElementById('addAgentError').style.display = 'none';
+  document.getElementById('addAgentOverlay').classList.add('open');
+}
+
+function closeAddAgentModal(e) {
+  if (e && e.target !== document.getElementById('addAgentOverlay')) return;
+  document.getElementById('addAgentOverlay').classList.remove('open');
+}
+
+async function submitAddAgent() {
+  const role = document.getElementById('addAgentRole').value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+  const name = document.getElementById('addAgentName').value.trim();
+  const label = document.getElementById('addAgentLabel').value.trim();
+  const errEl = document.getElementById('addAgentError');
+
+  if (!role || !name) {
+    errEl.textContent = 'Role ID and Display Name are required.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/agents/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role, name, label: label || name }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeAddAgentModal();
+      refreshGatewayStatus();
+      // Force a state refresh after a short delay
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      errEl.textContent = data.error || 'Failed to add agent.';
+      errEl.style.display = 'block';
+    }
+  } catch (e) {
+    errEl.textContent = `Error: ${e.message}`;
+    errEl.style.display = 'block';
+  }
 }
 
 // ── Project ────────────────────────────────────────────────────────────────

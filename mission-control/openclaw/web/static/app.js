@@ -154,6 +154,32 @@ function startGatewayPolling() {
   _gwPollTimer = setInterval(refreshGatewayStatus, 5000);
 }
 
+async function runDoctor() {
+  const btn = document.getElementById('btnDoctor');
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '🩺 Running…';
+  try {
+    const res = await fetch('/api/doctor', { method: 'POST' });
+    const data = await res.json();
+    btn.disabled = false;
+    btn.innerHTML = original;
+    if (data.ok) {
+      // Show results in a gateway banner
+      const summary = data.output ? data.output.substring(0, 200) : 'Doctor completed.';
+      showGatewayBanner('🩺 Doctor: ' + summary.replace(/\n/g, ' '));
+      // Refresh gateway status after doctor runs
+      setTimeout(refreshGatewayStatus, 1000);
+    } else {
+      showGatewayBanner('🩺 Doctor failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = original;
+    showGatewayBanner('🩺 Doctor: Could not connect to server.');
+  }
+}
+
 async function restartMissionControl() {
   if (!confirm('Restart Mission Control server? The page will reload automatically when it comes back up.')) return;
   const btn = document.getElementById('mcBtnRestart');

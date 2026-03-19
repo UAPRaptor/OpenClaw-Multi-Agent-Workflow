@@ -291,7 +291,10 @@
         <button id="gwBtnRefresh" class="gw-btn gw-btn-ghost" onclick="refreshGatewayStatus()" title="Refresh gateway status">↻</button>
       </div>
     </div>
-    <button id="mcBtnRestart" class="gw-btn gw-btn-ghost" onclick="restartMissionControl()" title="Restart Mission Control server">↺ Restart MC</button>
+    <div style="display:flex;align-items:center;gap:6px">
+      <button id="btnDoctor" class="gw-btn" onclick="runDoctor()" title="Run openclaw doctor — health check and auto-repair for gateway and channels">🩺 Doctor</button>
+      <button id="mcBtnRestart" class="gw-btn gw-btn-ghost" onclick="restartMissionControl()" title="Restart Mission Control server">↺ Restart MC</button>
+    </div>
   </div>
 
   <div class="gateway-banner" id="gatewayBanner" style="display:none">

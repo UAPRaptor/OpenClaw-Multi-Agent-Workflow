@@ -1293,6 +1293,46 @@ async def restart_gateway() -> JSONResponse:
         }, status_code=500)
 
 
+@app.post("/api/doctor")
+async def run_doctor() -> JSONResponse:
+    """
+    Runs `openclaw doctor --repair --non-interactive` to auto-fix gateway and
+    channel issues.  Returns stdout/stderr for display in the dashboard.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["openclaw", "doctor", "--repair", "--non-interactive"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        # Strip ANSI escape codes from output for clean display
+        import re as _re
+        clean = _re.sub(r"\x1b\[[0-9;]*m", "", result.stdout + result.stderr)
+        return JSONResponse({
+            "ok": result.returncode == 0,
+            "output": clean.strip(),
+            "returncode": result.returncode,
+        })
+    except subprocess.TimeoutExpired:
+        return JSONResponse({
+            "ok": False,
+            "error": "Doctor timed out after 30 seconds",
+        }, status_code=408)
+    except FileNotFoundError:
+        return JSONResponse({
+            "ok": False,
+            "error": "openclaw command not found — is OpenClaw installed?",
+        }, status_code=404)
+    except Exception as e:
+        return JSONResponse({
+            "ok": False,
+            "error": f"Doctor failed: {str(e)}",
+        }, status_code=500)
+
+
 @app.post("/api/server/restart")
 async def restart_server() -> JSONResponse:
     """

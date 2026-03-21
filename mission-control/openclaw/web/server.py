@@ -16,7 +16,7 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from openclaw.web.websocket_hub import hub
 from openclaw.platform_utils import (
@@ -134,23 +134,59 @@ async def session_log() -> JSONResponse:
 
 @app.get("/api/projects")
 async def list_projects() -> JSONResponse:
-    """Lists available projects in the workspace's projects/ directory."""
+    """Lists local projects merged with GitHub repos. Uncloned repos marked cloned=false."""
     if _workspace_root is None:
         return JSONResponse({"error": "no workspace"}, status_code=503)
     projects_dir = _workspace_root / "projects"
-    if not projects_dir.exists():
-        return JSONResponse({"projects": []})
     from openclaw.installer.template_deployer import read_project_metadata
-    projects = []
-    for d in sorted(projects_dir.iterdir()):
-        if d.is_dir():
-            meta = read_project_metadata(d)
-            projects.append({
-                "name": d.name,
-                "path": f"projects/{d.name}",
-                "source": meta.get("source", "local"),
-                "remote_url": meta.get("remote_url"),
-            })
+
+    # 1. Local projects
+    local_projects = {}
+    if projects_dir.exists():
+        for d in sorted(projects_dir.iterdir()):
+            if d.is_dir():
+                meta = read_project_metadata(d)
+                local_projects[d.name] = {
+                    "name": d.name,
+                    "path": f"projects/{d.name}",
+                    "source": meta.get("source", "local"),
+                    "remote_url": meta.get("remote_url"),
+                    "cloned": True,
+                }
+
+    # 2. GitHub repos (best-effort, don't fail if gh unavailable)
+    gh_repos = []
+    if shutil.which("gh"):
+        try:
+            proc = await asyncio.wait_for(
+                asyncio.create_subprocess_exec(
+                    "gh", "repo", "list", "--json", "name,url,description,isPrivate", "--limit", "100",
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                ),
+                timeout=15,
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode == 0:
+                gh_repos = json.loads(stdout.decode())
+        except Exception:
+            pass  # gh unavailable or timed out — show local projects only
+
+    # 3. Merge: add uncloned GH repos (exclude MC infra repos)
+    _infra_repos = {"openclaw-multi-agent-workflow", "mission-control", "openclaw-mission-control"}
+    for repo in gh_repos:
+        repo_name = repo.get("name", "")
+        if repo_name and repo_name not in local_projects and repo_name.lower() not in _infra_repos:
+            local_projects[repo_name] = {
+                "name": repo_name,
+                "path": None,
+                "source": "github",
+                "remote_url": repo.get("url"),
+                "description": repo.get("description", ""),
+                "cloned": False,
+            }
+
+    projects = sorted(local_projects.values(), key=lambda p: (not p["cloned"], p["name"]))
+
     # Read active project
     from openclaw.monitor.agent_state_reader import read_active_project
     active = read_active_project(_workspace_root)
@@ -191,6 +227,9 @@ async def create_project(request: Request) -> JSONResponse:
     import re as _re
     if not _re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}$", project_name):
         return JSONResponse({"ok": False, "error": "Invalid name: use letters, numbers, hyphens, underscores"}, status_code=400)
+    _reserved = {"mission-control", "openclaw-mission-control", "openclaw-multi-agent-workflow"}
+    if project_name.lower() in _reserved:
+        return JSONResponse({"ok": False, "error": f"'{project_name}' is a reserved name."}, status_code=400)
     project_dir = _workspace_root / "projects" / project_name
     if project_dir.exists():
         return JSONResponse({"ok": False, "error": f"Project '{project_name}' already exists"}, status_code=409)
@@ -258,6 +297,162 @@ async def create_ticket(body: CreateTicketRequest) -> JSONResponse:
     return JSONResponse({"ok": True, "ticket_id": ticket_id, "file": str(ticket_file)})
 
 
+# ── Asset Gallery ────────────────────────────────────────────────────────────
+
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"}
+
+
+@app.get("/api/assets")
+async def list_assets() -> JSONResponse:
+    """Lists image assets from the active project's assets/ directory."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    from openclaw.monitor.agent_state_reader import read_active_project
+    active = read_active_project(_workspace_root)
+    if not active:
+        return JSONResponse({"assets": [], "project": None})
+
+    assets_dir = _workspace_root / active["path"] / "assets"
+    if not assets_dir.exists():
+        return JSONResponse({"assets": [], "project": active["name"]})
+
+    assets = []
+    for f in sorted(assets_dir.rglob("*"), key=lambda p: p.stat().st_mtime, reverse=True):
+        if f.is_file() and f.suffix.lower() in _IMAGE_EXTENSIONS:
+            rel = f.relative_to(_workspace_root / active["path"])
+            stat = f.stat()
+            # Subfolder category (e.g. "icons", "banners") or "root"
+            parts = rel.parts
+            category = parts[1] if len(parts) > 2 else "uncategorized"
+            assets.append({
+                "name": f.name,
+                "path": str(rel),
+                "category": category,
+                "size_bytes": stat.st_size,
+                "size_kb": round(stat.st_size / 1024, 1),
+                "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                "ext": f.suffix.lower(),
+            })
+
+    return JSONResponse({"assets": assets, "project": active["name"]})
+
+
+@app.get("/api/assets/file/{path:path}")
+async def serve_asset(path: str) -> Response:
+    """Serves an asset image file from the active project."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    from openclaw.monitor.agent_state_reader import read_active_project
+    active = read_active_project(_workspace_root)
+    if not active:
+        return JSONResponse({"error": "no active project"}, status_code=404)
+
+    file_path = (_workspace_root / active["path"] / path).resolve()
+    project_root = (_workspace_root / active["path"]).resolve()
+
+    # Security: ensure the path is within the project directory
+    if not str(file_path).startswith(str(project_root)):
+        return JSONResponse({"error": "access denied"}, status_code=403)
+    if not file_path.exists() or not file_path.is_file():
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    mime_map = {
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
+        ".bmp": "image/bmp", ".ico": "image/x-icon",
+    }
+    content_type = mime_map.get(file_path.suffix.lower(), "application/octet-stream")
+    return Response(content=file_path.read_bytes(), media_type=content_type)
+
+
+@app.post("/api/assets/commit")
+async def commit_assets(request: Request) -> JSONResponse:
+    """Commits and pushes all assets in the active project to its GitHub repo."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    from openclaw.monitor.agent_state_reader import read_active_project
+    active = read_active_project(_workspace_root)
+    if not active:
+        return JSONResponse({"ok": False, "error": "No active project"}, status_code=400)
+
+    project_dir = (_workspace_root / active["path"]).resolve()
+    assets_dir = project_dir / "assets"
+    if not assets_dir.exists():
+        return JSONResponse({"ok": False, "error": "No assets/ directory"}, status_code=404)
+
+    # Check if this is a git repo
+    git_dir = project_dir / ".git"
+    if not git_dir.exists():
+        return JSONResponse({
+            "ok": False,
+            "error": "Project is not a git repo. Clone from GitHub first to enable asset commits.",
+        }, status_code=400)
+
+    try:
+        # Stage all assets + asset-manifest.md
+        stage_proc = await asyncio.create_subprocess_exec(
+            "git", "add", "assets/", "asset-manifest.md",
+            cwd=str(project_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await stage_proc.communicate()
+
+        # Check if there's anything to commit
+        status_proc = await asyncio.create_subprocess_exec(
+            "git", "diff", "--cached", "--quiet",
+            cwd=str(project_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await status_proc.communicate()
+        if status_proc.returncode == 0:
+            return JSONResponse({"ok": True, "message": "No new assets to commit"})
+
+        # Count staged files for commit message
+        count_proc = await asyncio.create_subprocess_exec(
+            "git", "diff", "--cached", "--name-only",
+            cwd=str(project_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        count_out, _ = await count_proc.communicate()
+        file_count = len(count_out.decode().strip().splitlines())
+
+        # Commit
+        msg = f"Add {file_count} asset(s) via OpenClaw Graphics Designer"
+        commit_proc = await asyncio.create_subprocess_exec(
+            "git", "commit", "-m", msg,
+            cwd=str(project_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        commit_out, commit_err = await commit_proc.communicate()
+        if commit_proc.returncode != 0:
+            return JSONResponse({"ok": False, "error": commit_err.decode(errors="replace")[:500]}, status_code=500)
+
+        # Push
+        push_proc = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                "git", "push",
+                cwd=str(project_dir),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            ),
+            timeout=30,
+        )
+        push_out, push_err = await push_proc.communicate()
+        pushed = push_proc.returncode == 0
+
+        return JSONResponse({
+            "ok": True,
+            "committed": file_count,
+            "pushed": pushed,
+            "push_error": push_err.decode(errors="replace")[:300] if not pushed else None,
+            "message": msg,
+        })
+
+    except asyncio.TimeoutError:
+        return JSONResponse({"ok": False, "error": "Push timed out"}, status_code=504)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @app.get("/api/github/repos")
 async def list_github_repos() -> JSONResponse:
     """Lists the user's GitHub repos using the gh CLI."""
@@ -303,6 +498,18 @@ async def clone_project(body: CloneProjectRequest) -> JSONResponse:
     import re as _re
     if not _re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}$", project_name):
         return JSONResponse({"ok": False, "error": f"Invalid project name derived from URL: '{project_name}'"}, status_code=400)
+
+    # Guard: prevent cloning the MC infrastructure repo as a project
+    _infra_keywords = {"openclaw-multi-agent-workflow", "mission-control", "openclaw-mission-control"}
+    if project_name.lower() in _infra_keywords:
+        return JSONResponse({
+            "ok": False,
+            "error": (
+                f"'{project_name}' looks like the Mission Control infrastructure repo, "
+                "not a project to work on. If you really want this, use a different name."
+            ),
+        }, status_code=400)
+
     project_dir = _workspace_root / "projects" / project_name
     if project_dir.exists():
         return JSONResponse({"ok": False, "error": f"Project '{project_name}' already exists"}, status_code=409)
@@ -374,12 +581,20 @@ async def save_backup(request: Request) -> JSONResponse:
         ws_name = _workspace_root.name
         backup_dir = backups_dir / f"{ws_name}_{ts}"
         shutil.copytree(_workspace_root, backup_dir, dirs_exist_ok=False)
-        file_count = sum(1 for _ in backup_dir.rglob("*") if _.is_file())
+        # Include encrypted vault if it exists
+        vault_src = Path.home() / ".openclaw" / "vault"
+        if vault_src.exists():
+            shutil.copytree(vault_src, backup_dir / ".vault-backup", dirs_exist_ok=False)
+        files = []
+        for f in sorted(backup_dir.rglob("*")):
+            if f.is_file():
+                files.append(str(f.relative_to(backup_dir)))
         return JSONResponse({
             "ok": True,
             "backup_id": backup_dir.name,
             "path": str(backup_dir),
-            "file_count": file_count,
+            "file_count": len(files),
+            "files": files,
         })
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -413,6 +628,16 @@ async def restore_backup(request: Request) -> JSONResponse:
             else:
                 item.unlink()
         shutil.copytree(backup_path, _workspace_root, dirs_exist_ok=True)
+        # Restore vault if backup contains one
+        vault_backup = backup_path / ".vault-backup"
+        if vault_backup.exists():
+            vault_dst = Path.home() / ".openclaw" / "vault"
+            vault_dst.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(vault_backup, vault_dst, dirs_exist_ok=True)
+        # Remove .vault-backup from workspace (it's not a workspace file)
+        restored_vault = _workspace_root / ".vault-backup"
+        if restored_vault.exists():
+            shutil.rmtree(restored_vault)
         return JSONResponse({
             "ok": True,
             "restored_from": backup_id,
@@ -434,6 +659,50 @@ async def delete_backup(backup_id: str) -> JSONResponse:
     try:
         shutil.rmtree(backup_path)
         return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.get("/api/backups/{backup_id}/files")
+async def browse_backup(backup_id: str) -> JSONResponse:
+    """Returns the file tree for a backup."""
+    backups_dir = Path.home() / ".openclaw-mission-control" / "backups"
+    backup_path = backups_dir / backup_id
+    if not backup_path.exists():
+        return JSONResponse({"ok": False, "error": "Backup not found"}, status_code=404)
+    if not str(backup_path.resolve()).startswith(str(backups_dir.resolve())):
+        return JSONResponse({"ok": False, "error": "Invalid backup path"}, status_code=400)
+    files = []
+    for f in sorted(backup_path.rglob("*")):
+        if f.is_file():
+            rel = str(f.relative_to(backup_path))
+            files.append({"path": rel, "size": f.stat().st_size})
+    return JSONResponse({"ok": True, "backup_id": backup_id, "files": files})
+
+
+@app.get("/api/backups/{backup_id}/file")
+async def read_backup_file(backup_id: str, path: str = "") -> JSONResponse:
+    """Reads a single file from a backup (read-only)."""
+    backups_dir = Path.home() / ".openclaw-mission-control" / "backups"
+    backup_path = backups_dir / backup_id
+    if not backup_path.exists():
+        return JSONResponse({"ok": False, "error": "Backup not found"}, status_code=404)
+    if not str(backup_path.resolve()).startswith(str(backups_dir.resolve())):
+        return JSONResponse({"ok": False, "error": "Invalid backup path"}, status_code=400)
+    if not path:
+        return JSONResponse({"ok": False, "error": "path parameter required"}, status_code=400)
+    file_path = (backup_path / path).resolve()
+    # Path traversal protection
+    if not str(file_path).startswith(str(backup_path.resolve())):
+        return JSONResponse({"ok": False, "error": "Invalid file path"}, status_code=400)
+    if not file_path.exists() or not file_path.is_file():
+        return JSONResponse({"ok": False, "error": "File not found"}, status_code=404)
+    try:
+        content = file_path.read_text(encoding="utf-8", errors="replace")
+        # Cap at 100KB for safety
+        if len(content) > 102400:
+            content = content[:102400] + "\n\n... (truncated at 100KB)"
+        return JSONResponse({"ok": True, "path": path, "content": content})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -747,7 +1016,7 @@ async def reregister_agents(body: dict) -> JSONResponse:
 async def run_install(request: Request) -> JSONResponse:
     from openclaw.installer.workspace_builder import build_layout, create_workspace, write_agent_launchers
     from openclaw.installer.template_deployer import deploy_workspace_files, deploy_project_files
-    from openclaw.installer.config_writer import write_claude_settings
+    from openclaw.installer.config_writer import write_claude_settings, write_mcp_config
     from openclaw.installer.agent_registrar import register_openclaw_agents
 
     try:
@@ -837,6 +1106,9 @@ async def run_install(request: Request) -> JSONResponse:
         settings_path = write_claude_settings(target, default_model=default_model)
         created.append(settings_path)
 
+        mcp_path = write_mcp_config(target)
+        created.append(mcp_path)
+
         # Store workspace path for monitor startup
         _installer_context["last_installed_path"] = str(target)
         save_last_workspace(target)
@@ -850,6 +1122,117 @@ async def run_install(request: Request) -> JSONResponse:
         })
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+# ── Agent model management ────────────────────────────────────────────────────
+
+
+@app.post("/api/agents/model")
+async def change_agent_model(request: Request) -> JSONResponse:
+    """Changes an agent's model in AGENTS.md and launcher scripts."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    body = await request.json()
+    role = body.get("role", "").strip().lower()
+    new_model = body.get("model", "").strip()
+    if not role or not new_model:
+        return JSONResponse({"ok": False, "error": "role and model required"}, status_code=400)
+
+    updated = []
+
+    # 1. Update AGENTS.md — find the agent section and replace its **Model:** line
+    agents_md = _workspace_root / "AGENTS.md"
+    if agents_md.exists():
+        content = agents_md.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        from openclaw.installer.template_deployer import ROLE_LABELS
+        role_label = ROLE_LABELS.get(role, role.title())
+        # Find the section for this role and update the Model line within it
+        in_section = False
+        for i, line in enumerate(lines):
+            if line.startswith("### ") and role_label in line:
+                in_section = True
+            elif line.startswith("### ") and in_section:
+                break  # moved past our section
+            elif in_section and line.startswith("**Model:**"):
+                lines[i] = f"**Model:** {new_model}"
+                updated.append("AGENTS.md")
+                break
+        agents_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # 2. Update launcher scripts
+    launchers = _workspace_root / "launchers"
+    for ext, comment_prefix in [("sh", "#"), ("bat", "REM")]:
+        script = launchers / f"run-{role}.{ext}"
+        if script.exists():
+            content = script.read_text(encoding="utf-8")
+            new_lines = []
+            for line in content.splitlines():
+                # Update comment: # Model: old → # Model: new
+                if line.strip().startswith(f"{comment_prefix} Model:"):
+                    new_lines.append(f"{comment_prefix} Model: {new_model}")
+                # Update command: --model old → --model new
+                elif "--model " in line:
+                    new_lines.append(re.sub(r"--model\s+\S+", f"--model {new_model}", line))
+                else:
+                    new_lines.append(line)
+            script.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+            updated.append(f"run-{role}.{ext}")
+
+    if not updated:
+        return JSONResponse({"ok": False, "error": f"No files found for role '{role}'"}, status_code=404)
+
+    return JSONResponse({"ok": True, "updated": updated, "role": role, "model": new_model})
+
+
+@app.post("/api/agents/model/bulk")
+async def change_all_agent_models(request: Request) -> JSONResponse:
+    """Changes the model for ALL agents at once."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    body = await request.json()
+    new_model = body.get("model", "").strip()
+    if not new_model:
+        return JSONResponse({"ok": False, "error": "model required"}, status_code=400)
+
+    # Find all roles from AGENTS.md
+    agents_md = _workspace_root / "AGENTS.md"
+    if not agents_md.exists():
+        return JSONResponse({"ok": False, "error": "AGENTS.md not found"}, status_code=404)
+
+    content = agents_md.read_text(encoding="utf-8")
+    # Replace all **Model:** lines
+    new_content = re.sub(r"\*\*Model:\*\*\s*.+", f"**Model:** {new_model}", content)
+    agents_md.write_text(new_content, encoding="utf-8")
+
+    # Update all launcher scripts
+    launchers = _workspace_root / "launchers"
+    updated_launchers = 0
+    if launchers.exists():
+        for script in launchers.iterdir():
+            if not script.is_file():
+                continue
+            ext = script.suffix
+            comment_prefix = "#" if ext == ".sh" else "REM" if ext == ".bat" else None
+            if comment_prefix is None:
+                continue
+            text = script.read_text(encoding="utf-8")
+            new_lines = []
+            changed = False
+            for line in text.splitlines():
+                if line.strip().startswith(f"{comment_prefix} Model:"):
+                    new_lines.append(f"{comment_prefix} Model: {new_model}")
+                    changed = True
+                elif "--model " in line:
+                    new_lines.append(re.sub(r"--model\s+\S+", f"--model {new_model}", line))
+                    changed = True
+                else:
+                    new_lines.append(line)
+            if changed:
+                script.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+                updated_launchers += 1
+
+    return JSONResponse({"ok": True, "model": new_model, "launchers_updated": updated_launchers})
 
 
 # ── Model provider API ────────────────────────────────────────────────────────
@@ -1312,6 +1695,281 @@ async def verify_agent(role: str) -> JSONResponse:
         }, status_code=500)
 
 
+@app.get("/api/system/specs")
+async def system_specs() -> JSONResponse:
+    """Returns machine specs for hardware-aware model recommendations."""
+    import platform
+    import subprocess as _sp
+
+    specs: dict = {"os": platform.system(), "arch": platform.machine()}
+
+    # RAM
+    try:
+        if platform.system() == "Darwin":
+            mem = int(_sp.check_output(["sysctl", "-n", "hw.memsize"]).strip())
+            specs["ram_gb"] = round(mem / (1024**3))
+        elif platform.system() == "Windows":
+            import ctypes
+            mem = ctypes.c_ulonglong()
+            ctypes.windll.kernel32.GetPhysicallyInstalledMemory(ctypes.byref(mem))
+            specs["ram_gb"] = round(mem.value / (1024 * 1024))
+        else:  # Linux
+            with open("/proc/meminfo") as f:
+                for line in f:
+                    if line.startswith("MemTotal"):
+                        specs["ram_gb"] = round(int(line.split()[1]) / (1024 * 1024))
+                        break
+    except Exception:
+        specs["ram_gb"] = 0
+
+    # CPU / chip
+    try:
+        if platform.system() == "Darwin":
+            specs["chip"] = _sp.check_output(["sysctl", "-n", "machdep.cpu.brand_string"]).decode().strip()
+        else:
+            specs["chip"] = platform.processor() or "Unknown"
+    except Exception:
+        specs["chip"] = "Unknown"
+
+    # GPU
+    try:
+        if platform.system() == "Darwin":
+            gpu_out = _sp.check_output(["system_profiler", "SPDisplaysDataType"], timeout=5).decode()
+            for line in gpu_out.splitlines():
+                if "Chipset Model:" in line or "Chip:" in line:
+                    specs["gpu"] = line.split(":", 1)[1].strip()
+                    break
+                if "Metal Support:" in line:
+                    specs["metal"] = line.split(":", 1)[1].strip()
+            gpu_cores_line = [l for l in gpu_out.splitlines() if "Total Number of Cores" in l]
+            if gpu_cores_line:
+                specs["gpu_cores"] = int(gpu_cores_line[0].split(":", 1)[1].strip())
+        elif platform.system() == "Windows":
+            gpu_out = _sp.check_output(["wmic", "path", "win32_videocontroller", "get", "name"], timeout=5).decode()
+            gpus = [l.strip() for l in gpu_out.splitlines()[1:] if l.strip()]
+            if gpus:
+                specs["gpu"] = gpus[0]
+    except Exception:
+        pass
+
+    # Disk free space
+    try:
+        import shutil as _sh
+        usage = _sh.disk_usage(str(Path.home()))
+        specs["disk_free_gb"] = round(usage.free / (1024**3))
+    except Exception:
+        specs["disk_free_gb"] = 0
+
+    # Recommend image models based on specs
+    ram = specs.get("ram_gb", 0)
+    chip = specs.get("chip", "").lower()
+    has_apple_silicon = "apple" in chip or "m1" in chip or "m2" in chip or "m3" in chip or "m4" in chip
+    has_nvidia = "nvidia" in specs.get("gpu", "").lower() or "geforce" in specs.get("gpu", "").lower()
+
+    recommendations = []
+    if ram >= 8 and (has_apple_silicon or has_nvidia):
+        gpu_type = "Apple Metal (MPS)" if has_apple_silicon else "NVIDIA CUDA"
+        recommendations.append({
+            "id": "sdxl-turbo",
+            "name": "SDXL Turbo",
+            "maker": "Stability AI",
+            "size_gb": 6.5,
+            "speed": "2-4 sec/image",
+            "quality": "Good",
+            "description": "Fast, 1-4 diffusion steps. Best balance of speed and quality for agent workflows.",
+            "why": f"Recommended for your {specs.get('chip', 'machine')}: generates in 1-4 steps vs 20+ for other models, "
+                   f"runs on {gpu_type}, and handles logos/icons/banners well. Free — no API costs.",
+            "recommended": True,
+        })
+    if ram >= 6:
+        recommendations.append({
+            "id": "sd-1.5",
+            "name": "Stable Diffusion 1.5",
+            "maker": "Stability AI (Runway)",
+            "size_gb": 4.0,
+            "speed": "5-15 sec/image",
+            "quality": "Good",
+            "description": "Classic model. Smaller download, wide compatibility.",
+            "why": "Smaller download but slower (20+ steps) and lower resolution (512x512). "
+                   "Good fallback if disk space is tight.",
+            "recommended": ram < 12,
+        })
+    if ram >= 16 and (has_apple_silicon or has_nvidia):
+        recommendations.append({
+            "id": "sd-3.5-medium",
+            "name": "Stable Diffusion 3.5 Medium",
+            "maker": "Stability AI",
+            "size_gb": 5.5,
+            "speed": "8-12 sec/image",
+            "quality": "Great",
+            "description": "Latest architecture. Best quality for the size.",
+            "why": "Higher fidelity output with newer MMDiT architecture. Worth adding if you need "
+                   "photorealistic or highly detailed assets. Slower than SDXL Turbo.",
+            "recommended": False,
+        })
+
+    # Cloud options (always available)
+    recommendations.append({
+        "id": "gemini",
+        "name": "Google Gemini / Imagen",
+        "maker": "Google",
+        "size_gb": 0,
+        "speed": "2-5 sec/image",
+        "quality": "Great",
+        "description": "Cloud API. Requires Google AI Studio API key with billing enabled.",
+        "why": "Best quality but requires billing. Good complement to local models for high-fidelity final assets.",
+        "recommended": False,
+        "cloud": True,
+    })
+
+    specs["image_models"] = recommendations
+    return JSONResponse(specs)
+
+
+@app.get("/api/image-models/status")
+async def image_model_status() -> JSONResponse:
+    """Check which local image models are already downloaded."""
+    models_dir = Path.home() / ".openclaw" / "models"
+    installed = []
+    for model_id in ["sdxl-turbo", "sd-1.5", "sd-3.5-medium"]:
+        model_path = models_dir / model_id
+        if model_path.exists() and any(model_path.iterdir()):
+            size_mb = sum(f.stat().st_size for f in model_path.rglob("*") if f.is_file()) / (1024 * 1024)
+            installed.append({"id": model_id, "path": str(model_path), "size_mb": round(size_mb)})
+    return JSONResponse({"installed": installed})
+
+
+@app.get("/api/image-models/deps")
+async def image_model_deps() -> JSONResponse:
+    """Check which Python packages needed for local image gen are installed."""
+    deps = {}
+    for pkg in ["torch", "diffusers", "transformers", "accelerate", "huggingface_hub"]:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-c", f"import {pkg}; print({pkg}.__version__)",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode == 0:
+                deps[pkg] = {"installed": True, "version": stdout.decode().strip()}
+            else:
+                deps[pkg] = {"installed": False}
+        except Exception:
+            deps[pkg] = {"installed": False}
+    return JSONResponse({"deps": deps})
+
+
+@app.post("/api/image-models/install-deps")
+async def install_image_deps(request: Request) -> JSONResponse:
+    """Install Python packages required for local image generation."""
+    packages = [
+        "torch", "torchvision",
+        "diffusers", "transformers", "accelerate",
+        "huggingface_hub", "protobuf", "sentencepiece",
+    ]
+    try:
+        proc = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                sys.executable, "-m", "pip", "install", "-q", *packages,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            ),
+            timeout=600,  # torch is large, can take a while
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return JSONResponse({
+                "ok": False,
+                "error": stderr.decode(errors="replace")[:500],
+            }, status_code=500)
+        return JSONResponse({"ok": True, "packages": packages})
+    except asyncio.TimeoutError:
+        return JSONResponse({"ok": False, "error": "Install timed out (10 min limit)"}, status_code=504)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/image-models/install")
+async def install_image_model(request: Request) -> JSONResponse:
+    """Downloads and installs a local image generation model."""
+    body = await request.json()
+    model_id = body.get("model_id", "")
+
+    # Model registry: HuggingFace repo IDs
+    MODEL_REPOS = {
+        "sdxl-turbo": "stabilityai/sdxl-turbo",
+        "sd-1.5": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+        "sd-3.5-medium": "stabilityai/stable-diffusion-3.5-medium",
+    }
+
+    if model_id not in MODEL_REPOS:
+        return JSONResponse({"ok": False, "error": f"Unknown model: {model_id}"}, status_code=400)
+
+    models_dir = Path.home() / ".openclaw" / "models" / model_id
+    if models_dir.exists() and any(models_dir.iterdir()):
+        return JSONResponse({"ok": True, "already_installed": True, "path": str(models_dir)})
+
+    # Ensure huggingface_hub is available before attempting download
+    hf_check = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", "import huggingface_hub",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    await hf_check.communicate()
+    if hf_check.returncode != 0:
+        pip_proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "pip", "install", "-q", "huggingface_hub",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await pip_proc.communicate()
+
+    models_dir.mkdir(parents=True, exist_ok=True)
+    repo_id = MODEL_REPOS[model_id]
+
+    try:
+        # Download fp16 variant only — skip full-precision weights, ONNX, and docs
+        # This cuts download from ~30 GB to ~6 GB for SDXL Turbo
+        download_script = (
+            f"from huggingface_hub import snapshot_download; "
+            f"snapshot_download("
+            f"'{repo_id}', "
+            f"local_dir='{models_dir}', "
+            f"ignore_patterns=["
+            f"'*.ckpt', '*.safetensors.index.json', "
+            f"'*.onnx', '*.onnx_data', '*.xml', '*.pb', "
+            f"'README.md', 'LICENSE*'"
+            f"], "
+            f"allow_patterns=["
+            f"'**/*.fp16.safetensors', '**/*.json', "
+            f"'**/merges.txt', '**/vocab.json', '**/special_tokens_map.json', "
+            f"'**/tokenizer_config.json', "
+            f"'**/*.safetensors', 'model_index.json'"
+            f"]"
+            f")"
+        )
+        proc = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                sys.executable, "-c", download_script,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            ),
+            timeout=600,  # 10 min for large downloads
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            err = stderr.decode(errors="replace").strip()
+            return JSONResponse({"ok": False, "error": err[:500]}, status_code=500)
+
+        # Clean up download cache to save disk space
+        cache_dir = models_dir / ".cache"
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir, ignore_errors=True)
+
+        return JSONResponse({"ok": True, "path": str(models_dir), "model_id": model_id})
+
+    except asyncio.TimeoutError:
+        return JSONResponse({"ok": False, "error": "Download timed out (10 min limit)"}, status_code=504)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @app.post("/api/agents/add")
 async def add_agent(request: Request) -> JSONResponse:
     """
@@ -1377,6 +2035,130 @@ async def add_agent(request: Request) -> JSONResponse:
             {"ok": False, "error": f"Failed to add agent: {str(e)}"},
             status_code=500,
         )
+
+
+# ── Vault (encrypted credential storage) ─────────────────────────────────────
+
+from openclaw.vault import Vault, VaultError
+
+_vault = Vault()
+
+
+@app.get("/api/vault/status")
+async def vault_status() -> JSONResponse:
+    """Check if the vault is unlocked and initialized."""
+    return JSONResponse({
+        "initialized": _vault.is_initialized,
+        "unlocked": _vault.is_unlocked,
+    })
+
+
+@app.post("/api/vault/unlock")
+async def vault_unlock(request: Request) -> JSONResponse:
+    """Unlock the vault with a passphrase (or create it on first use)."""
+    body = await request.json()
+    passphrase = body.get("passphrase", "")
+    if not passphrase:
+        return JSONResponse({"ok": False, "error": "Passphrase is required."}, status_code=400)
+    try:
+        _vault.unlock(passphrase)
+        return JSONResponse({"ok": True, "created": not _vault.is_initialized})
+    except VaultError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=401)
+
+
+@app.post("/api/vault/lock")
+async def vault_lock() -> JSONResponse:
+    """Lock the vault immediately — clears in-memory keys."""
+    _vault.lock()
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/vault/list")
+async def vault_list() -> JSONResponse:
+    """List all secret names (values are NOT returned)."""
+    if not _vault.is_unlocked:
+        return JSONResponse({"ok": False, "error": "Vault is locked."}, status_code=403)
+    return JSONResponse({"ok": True, "secrets": _vault.list_names()})
+
+
+@app.get("/api/vault/get/{name}")
+async def vault_get(name: str) -> JSONResponse:
+    """Retrieve a single secret value by name."""
+    if not _vault.is_unlocked:
+        return JSONResponse({"ok": False, "error": "Vault is locked."}, status_code=403)
+    try:
+        value = _vault.get(name)
+        return JSONResponse({"ok": True, "name": name, "value": value})
+    except KeyError:
+        return JSONResponse({"ok": False, "error": f"Secret '{name}' not found."}, status_code=404)
+
+
+@app.post("/api/vault/store")
+async def vault_store(request: Request) -> JSONResponse:
+    """Store a named secret. Body: {name, value}"""
+    if not _vault.is_unlocked:
+        return JSONResponse({"ok": False, "error": "Vault is locked."}, status_code=403)
+    body = await request.json()
+    name = body.get("name", "").strip()
+    value = body.get("value", "")
+    if not name:
+        return JSONResponse({"ok": False, "error": "Secret name is required."}, status_code=400)
+    _vault.store(name, value)
+    return JSONResponse({"ok": True, "name": name})
+
+
+@app.post("/api/vault/delete")
+async def vault_delete(request: Request) -> JSONResponse:
+    """Soft-delete a named secret (moved to archive). Body: {name}"""
+    if not _vault.is_unlocked:
+        return JSONResponse({"ok": False, "error": "Vault is locked."}, status_code=403)
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        return JSONResponse({"ok": False, "error": "Secret name is required."}, status_code=400)
+    existed = _vault.delete(name)
+    if not existed:
+        return JSONResponse({"ok": False, "error": f"Secret '{name}' not found."}, status_code=404)
+    return JSONResponse({"ok": True, "name": name, "archived": True})
+
+
+@app.get("/api/vault/deleted")
+async def vault_deleted() -> JSONResponse:
+    """List soft-deleted secrets (name + deleted_at, no values)."""
+    if not _vault.is_unlocked:
+        return JSONResponse({"ok": False, "error": "Vault is locked."}, status_code=403)
+    return JSONResponse({"ok": True, "deleted": _vault.list_deleted()})
+
+
+@app.post("/api/vault/recover")
+async def vault_recover(request: Request) -> JSONResponse:
+    """Recover a soft-deleted secret back to active. Body: {name}"""
+    if not _vault.is_unlocked:
+        return JSONResponse({"ok": False, "error": "Vault is locked."}, status_code=403)
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        return JSONResponse({"ok": False, "error": "Secret name is required."}, status_code=400)
+    recovered = _vault.recover(name)
+    if not recovered:
+        return JSONResponse({"ok": False, "error": f"No deleted secret '{name}' found."}, status_code=404)
+    return JSONResponse({"ok": True, "name": name})
+
+
+@app.post("/api/vault/purge")
+async def vault_purge(request: Request) -> JSONResponse:
+    """Permanently delete a secret from the archive. Body: {name}"""
+    if not _vault.is_unlocked:
+        return JSONResponse({"ok": False, "error": "Vault is locked."}, status_code=403)
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        return JSONResponse({"ok": False, "error": "Secret name is required."}, status_code=400)
+    count = _vault.purge(name)
+    if count == 0:
+        return JSONResponse({"ok": False, "error": f"No deleted entries for '{name}'."}, status_code=404)
+    return JSONResponse({"ok": True, "name": name, "purged": count})
 
 
 @app.get("/api/gateway/status")

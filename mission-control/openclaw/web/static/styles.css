@@ -338,6 +338,36 @@ input[type="text"]:focus, input[type="number"]:focus {
   color: var(--text);
 }
 .kanban-count.has-items { background: var(--accent); color: #fff; }
+.kanban-arrow {
+  display: inline-block;
+  font-size: 9px;
+  margin-right: 4px;
+  transition: transform 0.2s ease;
+  color: var(--text-muted);
+}
+.kanban-arrow.open { transform: rotate(90deg); }
+
+/* ── Backup browse ── */
+.backup-file-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.backup-file-row:hover { background: var(--card); }
+.backup-dir-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.backup-dir-row:hover { background: var(--card); }
 
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; }

@@ -4,7 +4,9 @@
       "Bash(gh repo:*)",
       "Bash(gh issue:*)",
       "Bash(gh pr:*)",
-      "Bash(gh api:*)"
+      "Bash(gh api:*)",
+      "mcp__openclaw-image-gen__generate_image",
+      "mcp__openclaw-image-gen__list_image_backends"
     ],
     "deny": [
       "Bash(rm -rf *)",
@@ -22,5 +24,6 @@
       "Bash(halt *)",
       "Bash(poweroff *)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true
 }

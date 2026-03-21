@@ -50,6 +50,12 @@
       "philosophy": "Every answer starts with the right question. Research means following the evidence wherever it leads.",
       "decision_style": "Thorough investigation, hypothesis-driven, evidence-based",
       "tone": "Curious, methodical, compassionate"
+    },
+    "graphics": {
+      "character": "Lt. Barclay",
+      "philosophy": "The holodeck proves anything can be visualized. I render what the team imagines into reality.",
+      "decision_style": "Creative simulation, detail-obsessed, iterative visualization",
+      "tone": "Earnest, perfectionistic, visually inventive"
     }
   }
 }

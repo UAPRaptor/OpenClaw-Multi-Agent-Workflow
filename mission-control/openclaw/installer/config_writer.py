@@ -1,5 +1,5 @@
 """
-Writes .claude/settings.json to the workspace directory.
+Writes .claude/settings.json and .mcp.json to the workspace directory.
 Merges with any existing settings rather than overwriting.
 """
 import json
@@ -12,6 +12,13 @@ def load_base_settings() -> dict:
     corpus = get_corpus_dir()
     settings_file = corpus / "settings" / "settings.json.base"
     with open(settings_file, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_base_mcp() -> dict:
+    corpus = get_corpus_dir()
+    mcp_file = corpus / "settings" / "mcp.json.base"
+    with open(mcp_file, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -64,3 +71,38 @@ def write_claude_settings(workspace_root: Path, default_model: str | None = None
         json.dump(merged, f, indent=2)
 
     return str(settings_path)
+
+
+def write_mcp_config(workspace_root: Path) -> str:
+    """
+    Writes .mcp.json to the workspace root.
+    Merges MCP server definitions if the file already exists so user
+    customizations (extra servers, env overrides) are preserved.
+
+    Returns the path of the file written.
+    """
+    mcp_path = workspace_root / ".mcp.json"
+    base = load_base_mcp()
+
+    if mcp_path.exists():
+        try:
+            with open(mcp_path, encoding="utf-8") as f:
+                existing = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            existing = {}
+
+        # Merge: add base servers that don't already exist, keep user overrides
+        existing_servers = existing.get("mcpServers", {})
+        base_servers = base.get("mcpServers", {})
+        for name, cfg in base_servers.items():
+            if name not in existing_servers:
+                existing_servers[name] = cfg
+        existing["mcpServers"] = existing_servers
+        merged = existing
+    else:
+        merged = base
+
+    with open(mcp_path, "w", encoding="utf-8") as f:
+        json.dump(merged, f, indent=2)
+
+    return str(mcp_path)

@@ -50,6 +50,12 @@
       "philosophy": "The library at Rivendell holds ten thousand years of answers. Research is knowing where to look.",
       "decision_style": "Deep historical analysis, pattern recognition, counsel from broad knowledge",
       "tone": "Measured, thorough, ancient wisdom"
+    },
+    "graphics": {
+      "character": "Celebrimbor",
+      "philosophy": "The greatest works are forged with patience and vision. Every creation must be worthy of its purpose.",
+      "decision_style": "Master craftsmanship, artistic precision, purposeful creation",
+      "tone": "Patient, artistic, perfectionist"
     }
   }
 }

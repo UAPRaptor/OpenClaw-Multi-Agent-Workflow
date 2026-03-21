@@ -205,6 +205,7 @@ async function restartMissionControl() {
 // ── Render ─────────────────────────────────────────────────────────────────
 
 function render(state) {
+  window._lastState = state;
   const hasWorkspace = state && (state.active_project || Object.keys(state.agents || {}).length > 0);
 
   document.getElementById('noWorkspace').style.display = hasWorkspace ? 'none' : 'block';
@@ -344,7 +345,25 @@ function statusLabel(s) {
   return { active: 'Active', idle: 'Idle', stalled: 'Stalled', inactive: 'Inactive', offline: 'Inactive', unknown: 'Inactive' }[s] || 'Inactive';
 }
 
-function showAgentDetails(role) {
+let _availableModels = null; // cached after first fetch
+
+async function _ensureModels() {
+  if (_availableModels) return _availableModels;
+  try {
+    const res = await fetch('/api/configured-models');
+    const configured = (await res.json()).models || [];
+    // Only show models that are actually configured/authenticated in OpenClaw
+    _availableModels = configured.map(m => {
+      const id = m.id || m;
+      return { id, label: m.label || id, provider: m.provider || '' };
+    });
+  } catch (_) {
+    _availableModels = [];
+  }
+  return _availableModels;
+}
+
+async function showAgentDetails(role) {
   const a = _agentsData[role];
   if (!a) return;
   document.getElementById('agentModalTitle').textContent = a.character || role;
@@ -354,13 +373,31 @@ function showAgentDetails(role) {
     ? '<span class="badge-ok">✔ Registered</span>'
     : '<span class="badge-warn">✘ Not registered</span>';
 
+  // Build model selector
+  const models = await _ensureModels();
+  const currentModel = a.model || '—';
+  let modelOptions = models.map(m =>
+    `<option value="${escHtml(m.id)}" ${m.id === currentModel ? 'selected' : ''}>${escHtml(m.label || m.id)}</option>`
+  ).join('');
+  // If current model isn't in the list, add it
+  if (!models.find(m => m.id === currentModel) && currentModel !== '—') {
+    modelOptions = `<option value="${escHtml(currentModel)}" selected>${escHtml(currentModel)}</option>` + modelOptions;
+  }
+  const modelHtml = `
+    <div style="display:flex;align-items:center;gap:8px;">
+      <select id="agentModelSelect" style="flex:1;padding:4px 8px;font-size:12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+        ${modelOptions}
+      </select>
+      <button class="btn btn-ghost" style="padding:3px 10px;font-size:11px;" onclick="changeAgentModel('${escHtml(role)}')">Save</button>
+    </div>`;
+
   const rows = [
     ['Agent ID',            `<code>${escHtml(a.agentId || a.role || '')}</code>`],
     ['Display Name',        escHtml(a.character || '—')],
     ['Role',                escHtml(a.role_label || a.role || '')],
     ['Status',              statusLabel(a.status)],
     ['Last Active',         a.last_active ? timeAgo(a.last_active) : '—'],
-    ['Model',               a.model || '—'],
+    ['Model',               modelHtml],
     ['Created',             a.created_at || '—'],
     ['Workspace',           a.workspace_path || '—'],
     ['Launcher (Mac/Linux)', a.launcher_sh  || '—'],
@@ -374,9 +411,90 @@ function showAgentDetails(role) {
       <div class="agent-modal-label">${escHtml(label)}</div>
       <div class="agent-modal-value">${value}</div>
     </div>
-  `).join('');
+  `).join('') + `
+    <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px;">
+      <button class="btn btn-ghost" style="width:100%;padding:6px 0;font-size:12px;" onclick="showBulkModelChange()">Change model for ALL agents</button>
+    </div>`;
 
   document.getElementById('agentModalOverlay').classList.add('open');
+}
+
+async function changeAgentModel(role) {
+  const sel = document.getElementById('agentModelSelect');
+  if (!sel) return;
+  const newModel = sel.value;
+  try {
+    const res = await fetch('/api/agents/model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role, model: newModel }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showGatewayBanner(`Model updated for ${role}: ${newModel}`);
+      // Update local cache so modal reflects change immediately
+      if (_agentsData[role]) _agentsData[role].model = newModel;
+    } else {
+      alert('Failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+async function showBulkModelChange() {
+  const models = await _ensureModels();
+  const currentFirst = Object.values(_agentsData)[0]?.model || '';
+  let opts = models.map(m =>
+    `<option value="${escHtml(m.id)}" ${m.id === currentFirst ? 'selected' : ''}>${escHtml(m.label || m.id)}</option>`
+  ).join('');
+  if (currentFirst && !models.find(m => m.id === currentFirst)) {
+    opts = `<option value="${escHtml(currentFirst)}" selected>${escHtml(currentFirst)}</option>` + opts;
+  }
+  const modalBody = document.getElementById('agentModalBody');
+  modalBody.innerHTML = `
+    <div style="padding:10px 0;">
+      <p style="font-size:13px;margin-bottom:10px;">Switch <strong>every agent</strong> to a single model. Use this to move the whole team to a local/free model.</p>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <select id="bulkModelSelect" style="flex:1;padding:6px 8px;font-size:13px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+          ${opts}
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn" style="flex:1;padding:6px 0;font-size:13px;" onclick="applyBulkModelChange()">Apply to All Agents</button>
+        <button class="btn btn-ghost" style="padding:6px 12px;font-size:13px;" onclick="closeAgentModal()">Cancel</button>
+      </div>
+    </div>`;
+  document.getElementById('agentModalTitle').textContent = 'Change All Models';
+  document.getElementById('agentModalRole').textContent = '';
+}
+
+async function applyBulkModelChange() {
+  const sel = document.getElementById('bulkModelSelect');
+  if (!sel) return;
+  const newModel = sel.value;
+  const agentCount = Object.keys(_agentsData).length;
+  if (!confirm(`Switch all ${agentCount} agents to "${newModel}"?`)) return;
+  try {
+    const res = await fetch('/api/agents/model/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: newModel }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showGatewayBanner(`All agents switched to ${newModel}`);
+      // Update local cache
+      for (const role of Object.keys(_agentsData)) {
+        _agentsData[role].model = newModel;
+      }
+      closeAgentModal();
+    } else {
+      alert('Failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
 }
 
 function closeAgentModal(e) {
@@ -391,12 +509,206 @@ function showAddAgentModal() {
   document.getElementById('addAgentName').value = '';
   document.getElementById('addAgentLabel').value = '';
   document.getElementById('addAgentError').style.display = 'none';
+  document.getElementById('imageGenSetup').style.display = 'none';
+  _imageGenSetupShown = false;
   document.getElementById('addAgentOverlay').classList.add('open');
 }
 
 function closeAddAgentModal(e) {
   if (e && e.target !== document.getElementById('addAgentOverlay')) return;
   document.getElementById('addAgentOverlay').classList.remove('open');
+}
+
+// ── Image Gen Setup for Graphics Agent ────────────────────────────────────
+
+let _imageGenSpecsCache = null;
+let _imageGenModelStatus = null;
+let _imageGenSetupShown = false;
+
+function onAddAgentRoleChange(val) {
+  const role = val.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+  const panel = document.getElementById('imageGenSetup');
+  if (role === 'graphics') {
+    panel.style.display = 'block';
+    if (!_imageGenSetupShown) {
+      _imageGenSetupShown = true;
+      loadImageGenSetup();
+    }
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+async function loadImageGenSetup() {
+  const specsEl = document.getElementById('imageGenSpecs');
+  const depsEl = document.getElementById('imageGenDeps');
+  const modelsEl = document.getElementById('imageGenModels');
+
+  try {
+    // Fetch hardware specs, deps status, and installed models in parallel
+    const [specsRes, depsRes, statusRes] = await Promise.all([
+      fetch('/api/system/specs'),
+      fetch('/api/image-models/deps'),
+      fetch('/api/image-models/status'),
+    ]);
+    const specs = await specsRes.json();
+    const depsData = await depsRes.json();
+    const status = await statusRes.json();
+    _imageGenSpecsCache = specs;
+    _imageGenModelStatus = status.installed || [];
+
+    // Show hardware summary
+    const gpu = specs.gpu || 'Integrated';
+    const metal = specs.metal ? ` | Metal: ${specs.metal}` : '';
+    specsEl.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin-bottom:4px;">
+        <span>RAM: <strong>${specs.ram_gb || '?'} GB</strong></span>
+        <span>Chip: <strong>${specs.chip || 'Unknown'}</strong></span>
+        <span>GPU: <strong>${gpu}</strong>${metal}</span>
+        <span>Disk Free: <strong>${specs.disk_free_gb || '?'} GB</strong></span>
+      </div>
+    `;
+
+    // Show Python deps status
+    const deps = depsData.deps || {};
+    const coreDeps = ['torch', 'diffusers', 'transformers', 'accelerate'];
+    const allInstalled = coreDeps.every(d => deps[d] && deps[d].installed);
+
+    if (allInstalled) {
+      const versions = coreDeps.map(d => `${d} ${deps[d].version}`).join(', ');
+      depsEl.innerHTML = `
+        <div style="font-size:12px;color:#4caf50;padding:6px 10px;border:1px solid #4caf5040;border-radius:4px;background:#4caf5010;">
+          Local generation ready &mdash; <span style="opacity:0.7">${versions}</span>
+        </div>`;
+    } else {
+      const missing = coreDeps.filter(d => !deps[d] || !deps[d].installed);
+      depsEl.innerHTML = `
+        <div style="font-size:12px;padding:8px 10px;border:1px solid var(--border);border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="color:var(--yellow);font-weight:500;">Local deps needed</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Missing: ${missing.join(', ')}</div>
+            <div style="font-size:11px;color:var(--text-muted);">Installs PyTorch + Diffusers (~2-4 GB)</div>
+          </div>
+          <button class="btn" style="padding:4px 14px;font-size:12px;flex-shrink:0;" onclick="installImageDeps(this)">Install Deps</button>
+        </div>`;
+    }
+
+    // Show recommended models
+    const models = specs.image_models || [];
+    const installedIds = _imageGenModelStatus.map(m => m.id);
+
+    if (models.length === 0) {
+      modelsEl.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">No compatible image models found for this hardware.</div>';
+      return;
+    }
+
+    modelsEl.innerHTML = models.map(m => {
+      const isInstalled = installedIds.includes(m.id);
+      const isCloud = m.cloud;
+      const recBadge = m.recommended ? '<span style="background:#4caf50;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:6px;">Recommended</span>' : '';
+      const makerLine = m.maker ? `by ${m.maker} &mdash; ` : '';
+      const sizeLine = isCloud ? 'Cloud-based' : `${m.size_gb} GB download`;
+      const whyLine = m.why ? `<div style="font-size:11px;color:var(--text-muted);margin-top:3px;font-style:italic;">${m.why}</div>` : '';
+      const statusBadge = isInstalled
+        ? '<span style="color:#4caf50;font-weight:600;font-size:11px;">Installed</span>'
+        : isCloud
+          ? '<span style="font-size:11px;color:var(--text-muted);">API key required</span>'
+          : `<button class="btn" style="padding:2px 10px;font-size:11px;" onclick="installImageModel('${m.id}', this)">Install</button>`;
+
+      return `
+        <div style="padding:8px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg-card);">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:500;">${m.name}${recBadge}</div>
+              <div style="font-size:11px;color:var(--text-muted);">${makerLine}${m.description}</div>
+              <div style="font-size:11px;color:var(--text-muted);">${sizeLine} | ${m.speed} | Quality: ${m.quality}</div>
+            </div>
+            <div style="flex-shrink:0;margin-left:10px;padding-top:2px;">${statusBadge}</div>
+          </div>
+          ${whyLine}
+        </div>
+      `;
+    }).join('');
+
+  } catch (e) {
+    specsEl.innerHTML = `<div style="color:var(--red);font-size:12px;">Failed to detect hardware: ${e.message}</div>`;
+  }
+}
+
+async function installImageDeps(btn) {
+  const statusEl = document.getElementById('imageGenStatus');
+  btn.disabled = true;
+  btn.textContent = 'Installing...';
+  statusEl.style.display = 'block';
+  statusEl.style.color = 'var(--text-muted)';
+  statusEl.textContent = 'Installing PyTorch + Diffusers... This may take several minutes.';
+
+  try {
+    const res = await fetch('/api/image-models/install-deps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await res.json();
+    if (data.ok) {
+      statusEl.textContent = 'Dependencies installed successfully.';
+      statusEl.style.color = '#4caf50';
+      // Refresh the panel to show updated deps status
+      _imageGenSetupShown = false;
+      _imageGenSetupShown = true;
+      loadImageGenSetup();
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Retry';
+      statusEl.textContent = `Deps install failed: ${data.error || 'Unknown error'}`;
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Retry';
+    statusEl.textContent = `Install error: ${e.message}`;
+    statusEl.style.color = 'var(--red)';
+  }
+}
+
+async function installImageModel(modelId, btn) {
+  const statusEl = document.getElementById('imageGenStatus');
+  btn.disabled = true;
+  btn.textContent = 'Downloading...';
+  statusEl.style.display = 'block';
+  statusEl.textContent = `Downloading ${modelId}... This may take several minutes.`;
+
+  try {
+    const res = await fetch('/api/image-models/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_id: modelId }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = 'Installed';
+      btn.style.color = '#4caf50';
+      btn.style.borderColor = '#4caf50';
+      statusEl.textContent = data.already_installed
+        ? `${modelId} was already installed.`
+        : `${modelId} installed successfully at ${data.path}`;
+      // Refresh the setup panel to reflect new state
+      _imageGenSetupShown = false;
+      _imageGenSetupShown = true;
+      loadImageGenSetup();
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Retry';
+      btn.style.color = 'var(--red)';
+      statusEl.textContent = `Install failed: ${data.error || 'Unknown error'}`;
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Retry';
+    statusEl.textContent = `Install error: ${e.message}`;
+    statusEl.style.color = 'var(--red)';
+  }
 }
 
 async function submitAddAgent() {
@@ -462,14 +774,20 @@ function renderProject(project, activeProject) {
 
 // ── Project Switching ──────────────────────────────────────────────────
 
+let _projectsList = [];
+
 async function loadProjects() {
   const sel = document.getElementById('projectSelect');
   if (!sel) return;
   try {
     const res = await fetch('/api/projects');
     const data = await res.json();
+    _projectsList = data.projects || [];
     sel.innerHTML = '';
-    for (const p of (data.projects || [])) {
+    // Cloned projects first, then uncloned GH repos separated by a divider
+    const cloned = _projectsList.filter(p => p.cloned);
+    const uncloned = _projectsList.filter(p => !p.cloned);
+    for (const p of cloned) {
       const opt = document.createElement('option');
       opt.value = p.name;
       const prefix = p.source === 'github' ? '[GH] ' : '';
@@ -477,11 +795,53 @@ async function loadProjects() {
       if (p.name === data.active) opt.selected = true;
       sel.appendChild(opt);
     }
+    if (uncloned.length > 0) {
+      const divider = document.createElement('option');
+      divider.disabled = true;
+      divider.textContent = '── GitHub (not cloned) ──';
+      sel.appendChild(divider);
+      for (const p of uncloned) {
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.textContent = '[GH] ' + p.name;
+        opt.dataset.uncloned = 'true';
+        opt.dataset.url = p.remote_url || '';
+        sel.appendChild(opt);
+      }
+    }
   } catch (_) {}
 }
 
 async function switchProject(name) {
   if (!name) return;
+  // Check if this is an uncloned repo — trigger clone first
+  const proj = _projectsList.find(p => p.name === name);
+  if (proj && !proj.cloned && proj.remote_url) {
+    if (!confirm(`"${name}" hasn't been cloned yet. Clone it from GitHub now?`)) {
+      // Reset dropdown to current active
+      loadProjects();
+      return;
+    }
+    try {
+      showGatewayBanner(`Cloning ${name}...`);
+      const res = await fetch('/api/projects/clone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo_url: proj.remote_url, name: name }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        alert('Clone failed: ' + (data.error || 'Unknown error'));
+        loadProjects();
+        return;
+      }
+      showGatewayBanner(`Cloned ${name} successfully`);
+    } catch (e) {
+      alert('Clone error: ' + e.message);
+      loadProjects();
+      return;
+    }
+  }
   try {
     const res = await fetch('/api/projects/switch', {
       method: 'POST',
@@ -637,9 +997,153 @@ async function cloneGithubRepo() {
 function showNewProjectInput() { showNewProjectModal(); }
 function hideNewProjectInput() { closeNewProjectModal(); }
 
+// ── Asset Gallery ──────────────────────────────────────────────────────────
+
+let _assetsCache = [];
+let _assetFilter = 'all';
+
+async function loadAssetGallery() {
+  const card = document.getElementById('assetGalleryCard');
+  const grid = document.getElementById('assetGalleryGrid');
+  const empty = document.getElementById('assetGalleryEmpty');
+  const filter = document.getElementById('assetCategoryFilter');
+
+  try {
+    const res = await fetch('/api/assets');
+    const data = await res.json();
+    _assetsCache = data.assets || [];
+
+    if (!data.project) {
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = 'block';
+
+    if (_assetsCache.length === 0) {
+      grid.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+    grid.style.display = 'grid';
+    empty.style.display = 'none';
+
+    // Build category filter options
+    const categories = [...new Set(_assetsCache.map(a => a.category))].sort();
+    filter.innerHTML = '<option value="all">All (' + _assetsCache.length + ')</option>' +
+      categories.map(c => {
+        const count = _assetsCache.filter(a => a.category === c).length;
+        return `<option value="${c}">${c} (${count})</option>`;
+      }).join('');
+    filter.value = _assetFilter;
+
+    renderAssetGrid();
+  } catch (e) {
+    card.style.display = 'block';
+    grid.innerHTML = `<div style="grid-column:1/-1;color:var(--red);font-size:12px;">Failed to load assets: ${e.message}</div>`;
+  }
+}
+
+function filterAssets(val) {
+  _assetFilter = val;
+  renderAssetGrid();
+}
+
+function renderAssetGrid() {
+  const grid = document.getElementById('assetGalleryGrid');
+  const filtered = _assetFilter === 'all'
+    ? _assetsCache
+    : _assetsCache.filter(a => a.category === _assetFilter);
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div style="grid-column:1/-1;color:var(--text-muted);font-size:12px;text-align:center;padding:12px;">No assets in this category.</div>';
+    return;
+  }
+
+  grid.innerHTML = filtered.map(a => {
+    const isSvg = a.ext === '.svg';
+    const thumbUrl = `/api/assets/file/${encodeURIComponent(a.path)}`;
+    const sizeLabel = a.size_kb >= 1024 ? `${(a.size_kb/1024).toFixed(1)} MB` : `${a.size_kb} KB`;
+    const timeLabel = timeAgo(a.modified);
+
+    return `
+      <div class="asset-thumb" onclick="previewAsset('${escHtml(a.path)}', '${escHtml(a.name)}')"
+           style="cursor:pointer;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--bg);transition:border-color 0.15s;"
+           onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="width:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:#18181b;overflow:hidden;">
+          ${isSvg
+            ? `<div style="padding:10px;color:var(--text-muted);font-size:11px;text-align:center;">SVG<br>${a.name}</div>`
+            : `<img src="${thumbUrl}" loading="lazy" style="width:100%;height:100%;object-fit:cover;" alt="${escHtml(a.name)}">`
+          }
+        </div>
+        <div style="padding:6px 8px;">
+          <div style="font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escHtml(a.name)}">${escHtml(a.name)}</div>
+          <div style="font-size:10px;color:var(--text-muted);">${sizeLabel} · ${timeLabel}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function previewAsset(path, name) {
+  const overlay = document.getElementById('assetPreviewOverlay');
+  const img = document.getElementById('assetPreviewImg');
+  const title = document.getElementById('assetPreviewTitle');
+  const info = document.getElementById('assetPreviewInfo');
+
+  const asset = _assetsCache.find(a => a.path === path);
+  title.textContent = name;
+  img.src = `/api/assets/file/${encodeURIComponent(path)}`;
+
+  if (asset) {
+    const sizeLabel = asset.size_kb >= 1024 ? `${(asset.size_kb/1024).toFixed(1)} MB` : `${asset.size_kb} KB`;
+    info.innerHTML = `
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <span>Path: <strong>${escHtml(asset.path)}</strong></span>
+        <span>Size: <strong>${sizeLabel}</strong></span>
+        <span>Category: <strong>${escHtml(asset.category)}</strong></span>
+        <span>Modified: <strong>${timeAgo(asset.modified)}</strong></span>
+      </div>
+    `;
+  }
+  overlay.classList.add('open');
+}
+
+function closeAssetPreview() {
+  document.getElementById('assetPreviewOverlay').classList.remove('open');
+  document.getElementById('assetPreviewImg').src = '';
+}
+
+async function commitAssets() {
+  if (!confirm('Commit and push all assets to the GitHub repo?')) return;
+  try {
+    const res = await fetch('/api/assets/commit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await res.json();
+    if (data.ok) {
+      const msg = data.committed
+        ? `Committed ${data.committed} file(s).${data.pushed ? ' Pushed to GitHub.' : ' Push failed: ' + (data.push_error || 'unknown')}`
+        : data.message;
+      alert(msg);
+    } else {
+      alert('Error: ' + (data.error || 'Unknown'));
+    }
+  } catch (e) {
+    alert('Commit failed: ' + e.message);
+  }
+}
+
 // ── Tickets ────────────────────────────────────────────────────────────────
 
 const TICKET_STATES = ['proposed','ready','in-progress','blocked','qa-failed','fixed','passed','released'];
+const TICKET_STATE_TIPS = {
+  'proposed': 'Ticket created but not yet approved for work. Needs triage/prioritization.',
+  'ready': 'Approved and scoped — an agent can pick it up.',
+  'in-progress': 'An agent is actively working on it. Stale warning if untouched >4 hours.',
+  'blocked': 'Work started but can\'t continue (dependency, question, external blocker).',
+  'qa-failed': 'QA reviewed and found issues — needs rework by the assignee.',
+  'fixed': 'Developer believes it\'s done — waiting for QA validation.',
+  'passed': 'QA confirmed it works — ready for release.',
+  'released': 'Shipped. Terminal state.',
+};
 
 function renderTickets(tickets) {
   const board = document.getElementById('kanbanBoard');
@@ -650,6 +1154,7 @@ function renderTickets(tickets) {
     const cls = count > 0 ? 'has-items' : '';
     const items = details[s] || [];
     const clickable = count > 0 ? ' style="cursor:pointer" onclick="toggleKanbanDetail(this)"' : '';
+    const arrow = count > 0 ? '<span class="kanban-arrow">&#9654;</span>' : '';
     let itemsHtml = '';
     if (items.length > 0) {
       itemsHtml = `<div class="kanban-detail" style="display:none;margin-top:6px;font-size:12px;">` +
@@ -668,8 +1173,8 @@ function renderTickets(tickets) {
     }
     return `
       <div class="kanban-col"${clickable}>
-        <div class="kanban-col-title">
-          <span>${s}</span>
+        <div class="kanban-col-title" title="${TICKET_STATE_TIPS[s] || ''}">
+          ${arrow}<span>${s}</span>
           <span class="kanban-count ${cls}">${count}</span>
         </div>
         ${itemsHtml}
@@ -679,8 +1184,11 @@ function renderTickets(tickets) {
 
 function toggleKanbanDetail(col) {
   const detail = col.querySelector('.kanban-detail');
+  const arrow = col.querySelector('.kanban-arrow');
   if (detail) {
-    detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
+    const open = detail.style.display === 'none';
+    detail.style.display = open ? 'block' : 'none';
+    if (arrow) arrow.classList.toggle('open', open);
   }
 }
 
@@ -736,18 +1244,32 @@ async function submitNewTicket() {
 
 // ── Activity ───────────────────────────────────────────────────────────────
 
+let _activityExpanded = false;
+
 function renderActivity(activity) {
   const feed = document.getElementById('activityFeed');
   if (!activity.length) {
     feed.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No recent activity.</p>';
     return;
   }
-  feed.innerHTML = activity.slice(0, 20).map(a => `
+  const all = activity.slice(0, 20);
+  const visible = _activityExpanded ? all : all.slice(0, 5);
+  const hasMore = all.length > 5;
+  feed.innerHTML = visible.map(a => `
     <div class="activity-item">
       <span class="activity-time">${timeAgo(a.time)}</span>
       <span class="activity-msg">${escHtml(a.message)}</span>
     </div>
-  `).join('');
+  `).join('') + (hasMore ? `
+    <button class="btn btn-ghost" style="width:100%;padding:4px 0;font-size:11px;margin-top:4px;" onclick="toggleActivity()">
+      ${_activityExpanded ? 'Show less' : `Show all (${all.length})`}
+    </button>` : '');
+}
+
+function toggleActivity() {
+  _activityExpanded = !_activityExpanded;
+  const state = window._lastState;
+  if (state) renderActivity(state.activity || []);
 }
 
 // ── Overnight ──────────────────────────────────────────────────────────────
@@ -1018,6 +1540,7 @@ async function loadBackups() {
           <div style="font-size:11px;color:var(--text-muted);">${escHtml(b.timestamp)} · ${b.file_count} files</div>
         </div>
         <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost" style="padding:3px 10px;font-size:11px;" onclick="browseBackup('${escHtml(b.id)}')">Browse</button>
           <button class="btn btn-ghost" style="padding:3px 10px;font-size:11px;" onclick="restoreBackup('${escHtml(b.id)}')">Restore</button>
           <button class="btn btn-ghost" style="padding:3px 10px;font-size:11px;color:var(--red);" onclick="deleteBackup('${escHtml(b.id)}')">Delete</button>
         </div>
@@ -1038,6 +1561,9 @@ async function saveBackup() {
     if (data.ok) {
       showGatewayBanner(`Backup saved: ${data.backup_id} (${data.file_count} files)`);
       loadBackups();
+      // Show file list in a confirmation modal
+      const files = data.files || [];
+      showBackupFilesModal(data.backup_id, files.map(f => ({path: f, size: null})), true);
     } else {
       alert('Backup failed: ' + (data.error || 'Unknown error'));
     }
@@ -1080,6 +1606,140 @@ async function deleteBackup(backupId) {
   } catch (e) {
     alert('Delete error: ' + e.message);
   }
+}
+
+async function browseBackup(backupId) {
+  try {
+    const res = await fetch(`/api/backups/${encodeURIComponent(backupId)}/files`);
+    const data = await res.json();
+    if (data.ok) {
+      showBackupFilesModal(backupId, data.files, false);
+    } else {
+      alert('Browse failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (e) {
+    alert('Browse error: ' + e.message);
+  }
+}
+
+function showBackupFilesModal(backupId, files, isSaveConfirmation) {
+  let overlay = document.getElementById('backupBrowseOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'backupBrowseOverlay';
+    overlay.className = 'modal-overlay';
+    overlay.onclick = (e) => { if (e.target === overlay) closeBackupBrowse(); };
+    document.body.appendChild(overlay);
+  }
+  const title = isSaveConfirmation ? `Backup Saved — ${files.length} files` : `Browse Backup — ${files.length} files`;
+  const subtitle = isSaveConfirmation ? `<div style="color:var(--green);font-size:12px;margin-bottom:8px;">Snapshot saved as <strong>${escHtml(backupId)}</strong></div>` : '';
+
+  // Build file tree grouped by top-level directory
+  const tree = {};
+  for (const f of files) {
+    const parts = f.path.split('/');
+    const dir = parts.length > 1 ? parts[0] : '.';
+    if (!tree[dir]) tree[dir] = [];
+    tree[dir].push(f);
+  }
+
+  let fileListHtml = '';
+  for (const [dir, dirFiles] of Object.entries(tree).sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (dir === '.') {
+      for (const f of dirFiles) {
+        fileListHtml += `<div class="backup-file-row" onclick="viewBackupFile('${escHtml(backupId)}','${escHtml(f.path)}')" title="Click to view">
+          <span style="color:var(--text);">${escHtml(f.path)}</span>
+          ${f.size != null ? `<span style="color:var(--text-muted);font-size:10px;">${formatSize(f.size)}</span>` : ''}
+        </div>`;
+      }
+    } else {
+      fileListHtml += `<div class="backup-dir-row" onclick="toggleBackupDir(this)">
+        <span class="kanban-arrow">&#9654;</span>
+        <span style="font-weight:500;">${escHtml(dir)}/</span>
+        <span style="color:var(--text-muted);font-size:10px;margin-left:auto;">${dirFiles.length} files</span>
+      </div>
+      <div class="backup-dir-children" style="display:none;">`;
+      for (const f of dirFiles) {
+        fileListHtml += `<div class="backup-file-row" onclick="viewBackupFile('${escHtml(backupId)}','${escHtml(f.path)}')" title="Click to view">
+          <span style="color:var(--text);padding-left:16px;">${escHtml(f.path.substring(dir.length + 1))}</span>
+          ${f.size != null ? `<span style="color:var(--text-muted);font-size:10px;">${formatSize(f.size)}</span>` : ''}
+        </div>`;
+      }
+      fileListHtml += '</div>';
+    }
+  }
+
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:600px;max-height:80vh;display:flex;flex-direction:column;">
+      <div class="modal-header">
+        <h3 style="margin:0;font-size:15px;">${title}</h3>
+        <button class="btn btn-ghost" onclick="closeBackupBrowse()" style="padding:2px 8px;">&times;</button>
+      </div>
+      ${subtitle}
+      <div id="backupBrowseContent" style="overflow-y:auto;flex:1;border:1px solid var(--border);border-radius:4px;background:var(--bg);">
+        <div id="backupFileList">${fileListHtml}</div>
+        <div id="backupFileViewer" style="display:none;"></div>
+      </div>
+    </div>`;
+  overlay.classList.add('open');
+}
+
+function closeBackupBrowse() {
+  const overlay = document.getElementById('backupBrowseOverlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+function toggleBackupDir(el) {
+  const children = el.nextElementSibling;
+  const arrow = el.querySelector('.kanban-arrow');
+  if (children) {
+    const open = children.style.display === 'none';
+    children.style.display = open ? 'block' : 'none';
+    if (arrow) arrow.classList.toggle('open', open);
+  }
+}
+
+async function viewBackupFile(backupId, filePath) {
+  const viewer = document.getElementById('backupFileViewer');
+  const list = document.getElementById('backupFileList');
+  viewer.innerHTML = '<p style="padding:12px;color:var(--text-muted);font-size:12px;">Loading...</p>';
+  viewer.style.display = 'block';
+  list.style.display = 'none';
+  try {
+    const res = await fetch(`/api/backups/${encodeURIComponent(backupId)}/file?path=${encodeURIComponent(filePath)}`);
+    const data = await res.json();
+    if (data.ok) {
+      viewer.innerHTML = `
+        <div style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+          <button class="btn btn-ghost" onclick="backToFileList()" style="padding:2px 8px;font-size:12px;">&larr; Back</button>
+          <span style="font-size:12px;font-weight:500;color:var(--text);">${escHtml(filePath)}</span>
+        </div>
+        <pre style="margin:0;padding:12px;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;overflow-y:auto;max-height:60vh;color:var(--text);background:var(--bg);">${escHtml(data.content)}</pre>`;
+    } else {
+      viewer.innerHTML = `
+        <div style="padding:8px 12px;border-bottom:1px solid var(--border);">
+          <button class="btn btn-ghost" onclick="backToFileList()" style="padding:2px 8px;font-size:12px;">&larr; Back</button>
+        </div>
+        <p style="padding:12px;color:var(--red);font-size:12px;">${escHtml(data.error || 'Could not read file')}</p>`;
+    }
+  } catch (e) {
+    viewer.innerHTML = `
+      <div style="padding:8px 12px;border-bottom:1px solid var(--border);">
+        <button class="btn btn-ghost" onclick="backToFileList()" style="padding:2px 8px;font-size:12px;">&larr; Back</button>
+      </div>
+      <p style="padding:12px;color:var(--red);font-size:12px;">Error: ${escHtml(e.message)}</p>`;
+  }
+}
+
+function backToFileList() {
+  document.getElementById('backupFileViewer').style.display = 'none';
+  document.getElementById('backupFileList').style.display = 'block';
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
 // ── Agent Cleanup ──────────────────────────────────────────────────────────
@@ -1142,7 +1802,8 @@ async function loadAgentRegistry() {
 
     // Test agents
     if (hasTest) {
-      html += '<div style="margin-bottom:16px;"><h4 style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;text-transform:uppercase;">Test Agents</h4>';
+      html += '<div style="margin-bottom:16px;"><h4 style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;text-transform:uppercase;" title="Agent directories that appear to be from testing or probing — not part of your active agent lineup. Safe to archive or remove.">Leftover / Test Agents</h4>';
+      html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">These agent directories are not in your active workspace lineup. They may be from earlier tests or probes. Your active agents are NOT affected by archiving or removing these.</div>';
       for (const agent of report.test) {
         html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:var(--border);border-radius:4px;margin-bottom:6px;font-size:12px;">
           <span><strong>${escHtml(agent.agentId)}</strong> <span style="color:var(--text-muted);">(${agent.category})</span></span>
@@ -1432,6 +2093,300 @@ async function setAsMain(role) {
   }
 }
 
+// ── Vault (Encrypted Credential Storage) ─────────────────────────────────
+
+let _vaultUnlocked = false;
+
+async function checkVaultStatus() {
+  try {
+    const res = await fetch('/api/vault/status');
+    const data = await res.json();
+    _vaultUnlocked = data.unlocked;
+    renderVaultStatus(data);
+    if (data.unlocked) loadVaultSecrets();
+  } catch (_) {}
+}
+
+function renderVaultStatus(data) {
+  const badge = document.getElementById('vaultStatusBadge');
+  const btn = document.getElementById('vaultToggleBtn');
+  if (data.unlocked) {
+    badge.textContent = 'Unlocked';
+    badge.style.background = 'rgba(76,175,80,0.15)';
+    badge.style.color = '#4caf50';
+    btn.textContent = 'Lock';
+    btn.onclick = lockVault;
+  } else {
+    badge.textContent = data.initialized ? 'Locked' : 'Not set up';
+    badge.style.background = 'rgba(239,68,68,0.15)';
+    badge.style.color = 'var(--red)';
+    btn.textContent = 'Unlock';
+    btn.onclick = () => toggleVault();
+    document.getElementById('vaultBody').innerHTML =
+      '<p>Vault is locked. Unlock to view and manage secrets.</p>';
+  }
+}
+
+let _vaultIsNew = false;
+
+function toggleVault() {
+  const overlay = document.getElementById('vaultUnlockOverlay');
+  const title = document.getElementById('vaultUnlockTitle');
+  const hint = document.getElementById('vaultUnlockHint');
+  const confirmInput = document.getElementById('vaultPassphraseConfirm');
+  document.getElementById('vaultPassphrase').value = '';
+  confirmInput.value = '';
+  document.getElementById('vaultUnlockError').style.display = 'none';
+  // Check if vault exists for hint text
+  fetch('/api/vault/status').then(r => r.json()).then(d => {
+    _vaultIsNew = !d.initialized;
+    if (_vaultIsNew) {
+      title.textContent = 'Create Vault';
+      hint.textContent = 'Choose a passphrase to encrypt your agent credentials. You will need this passphrase each time Mission Control starts.';
+      confirmInput.style.display = 'block';
+    } else {
+      title.textContent = 'Unlock Vault';
+      hint.textContent = 'Enter your vault passphrase to unlock encrypted secrets.';
+      confirmInput.style.display = 'none';
+    }
+  });
+  overlay.style.display = 'flex';
+}
+
+function closeVaultUnlockModal(e) {
+  if (e && e.target !== document.getElementById('vaultUnlockOverlay')) return;
+  document.getElementById('vaultUnlockOverlay').style.display = 'none';
+}
+
+async function submitVaultUnlock() {
+  const passphrase = document.getElementById('vaultPassphrase').value;
+  const confirm = document.getElementById('vaultPassphraseConfirm').value;
+  const errEl = document.getElementById('vaultUnlockError');
+  if (!passphrase) {
+    errEl.textContent = 'Passphrase is required.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (_vaultIsNew && passphrase !== confirm) {
+    errEl.textContent = 'Passphrases do not match.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await fetch('/api/vault/unlock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passphrase }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeVaultUnlockModal();
+      checkVaultStatus();
+    } else {
+      errEl.textContent = data.error || 'Unlock failed.';
+      errEl.style.display = 'block';
+    }
+  } catch (e) {
+    errEl.textContent = `Error: ${e.message}`;
+    errEl.style.display = 'block';
+  }
+}
+
+async function lockVault() {
+  await fetch('/api/vault/lock', { method: 'POST' });
+  _vaultUnlocked = false;
+  checkVaultStatus();
+}
+
+async function loadVaultSecrets() {
+  const body = document.getElementById('vaultBody');
+  try {
+    const res = await fetch('/api/vault/list');
+    const data = await res.json();
+    if (!data.ok) { body.innerHTML = '<p>Vault is locked.</p>'; return; }
+    const secrets = data.secrets || [];
+    if (secrets.length === 0) {
+      body.innerHTML = '<p>No secrets stored. Click <strong>+ Add Secret</strong> to store credentials.</p>';
+      return;
+    }
+    const deletedHtml = await loadDeletedSecrets();
+    body.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);">
+            <th style="text-align:left;padding:6px 8px;font-size:11px;color:var(--text-muted);text-transform:uppercase;">Name</th>
+            <th style="text-align:left;padding:6px 8px;font-size:11px;color:var(--text-muted);text-transform:uppercase;">Value</th>
+            <th style="width:80px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${secrets.map(name => `
+            <tr style="border-bottom:1px solid var(--border);" id="vault-row-${name}">
+              <td style="padding:8px;font-family:monospace;font-size:12px;font-weight:600;">${name}</td>
+              <td style="padding:8px;">
+                <span id="vault-val-${name}" style="font-family:monospace;font-size:12px;color:var(--text-muted);">••••••••</span>
+              </td>
+              <td style="padding:8px;text-align:right;white-space:nowrap;">
+                <button class="btn btn-ghost" style="padding:2px 6px;font-size:11px;" onclick="revealSecret('${name}')">Show</button>
+                <button class="btn btn-ghost" style="padding:2px 6px;font-size:11px;color:var(--red);" onclick="deleteSecret('${name}')">Del</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      ${deletedHtml}
+    `;
+  } catch (e) {
+    body.innerHTML = `<p style="color:var(--red);">Failed to load secrets: ${e.message}</p>`;
+  }
+}
+
+async function revealSecret(name) {
+  const el = document.getElementById(`vault-val-${name}`);
+  if (el.dataset.revealed === 'true') {
+    el.textContent = '••••••••';
+    el.dataset.revealed = 'false';
+    return;
+  }
+  try {
+    const res = await fetch(`/api/vault/get/${encodeURIComponent(name)}`);
+    const data = await res.json();
+    if (data.ok) {
+      el.textContent = data.value;
+      el.dataset.revealed = 'true';
+      // Auto-hide after 10 seconds
+      setTimeout(() => {
+        if (el.dataset.revealed === 'true') {
+          el.textContent = '••••••••';
+          el.dataset.revealed = 'false';
+        }
+      }, 10000);
+    }
+  } catch (_) {}
+}
+
+async function deleteSecret(name) {
+  if (!confirm(`Delete secret "${name}"?\n\nIt will be moved to the archive and can be recovered later.`)) return;
+  try {
+    const res = await fetch('/api/vault/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (data.ok) loadVaultSecrets();
+  } catch (_) {}
+}
+
+async function loadDeletedSecrets() {
+  try {
+    const res = await fetch('/api/vault/deleted');
+    const data = await res.json();
+    if (!data.ok || !data.deleted || data.deleted.length === 0) return '';
+    return `
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;">Deleted Archive</div>
+        <table style="width:100%;border-collapse:collapse;">
+          <tbody>
+            ${data.deleted.map(d => {
+              const when = new Date(d.deleted_at).toLocaleString();
+              return `
+                <tr style="border-bottom:1px solid var(--border);opacity:0.6;">
+                  <td style="padding:6px 8px;font-family:monospace;font-size:12px;text-decoration:line-through;">${d.name}</td>
+                  <td style="padding:6px 8px;font-size:11px;color:var(--text-muted);">Deleted ${when}</td>
+                  <td style="padding:6px 8px;text-align:right;white-space:nowrap;">
+                    <button class="btn btn-ghost" style="padding:2px 6px;font-size:11px;color:#4caf50;" onclick="recoverSecret('${d.name}')">Recover</button>
+                    <button class="btn btn-ghost" style="padding:2px 6px;font-size:11px;color:var(--red);" onclick="purgeSecret('${d.name}')">Purge</button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (_) { return ''; }
+}
+
+async function recoverSecret(name) {
+  try {
+    const res = await fetch('/api/vault/recover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (data.ok) loadVaultSecrets();
+  } catch (_) {}
+}
+
+async function purgeSecret(name) {
+  if (!confirm(`Permanently delete "${name}" from archive?\n\nThis CANNOT be undone.`)) return;
+  try {
+    const res = await fetch('/api/vault/purge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (data.ok) loadVaultSecrets();
+  } catch (_) {}
+}
+
+function showAddSecretModal() {
+  if (!_vaultUnlocked) { toggleVault(); return; }
+  document.getElementById('secretName').value = '';
+  document.getElementById('secretValue').value = '';
+  document.getElementById('addSecretError').style.display = 'none';
+  document.getElementById('addSecretOverlay').style.display = 'flex';
+}
+
+function closeAddSecretModal(e) {
+  if (e && e.target !== document.getElementById('addSecretOverlay')) return;
+  document.getElementById('addSecretOverlay').style.display = 'none';
+}
+
+function toggleSecretInputVisibility() {
+  const input = document.getElementById('secretValue');
+  const btn = document.getElementById('secretToggleBtn');
+  if (input.style.webkitTextSecurity === 'disc') {
+    input.style.webkitTextSecurity = 'none';
+    btn.textContent = 'Hide';
+  } else {
+    input.style.webkitTextSecurity = 'disc';
+    btn.textContent = 'Show';
+  }
+}
+
+async function submitAddSecret() {
+  const name = document.getElementById('secretName').value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  const value = document.getElementById('secretValue').value;
+  const errEl = document.getElementById('addSecretError');
+  if (!name || !value) {
+    errEl.textContent = 'Name and value are required.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await fetch('/api/vault/store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, value }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeAddSecretModal();
+      loadVaultSecrets();
+    } else {
+      errEl.textContent = data.error || 'Failed to store secret.';
+      errEl.style.display = 'block';
+    }
+  } catch (e) {
+    errEl.textContent = `Error: ${e.message}`;
+    errEl.style.display = 'block';
+  }
+}
+
 // ── Version badge ──────────────────────────────────────────────────────────
 
 fetch('/api/version')
@@ -1457,5 +2412,7 @@ loadSessionLog();
 loadSysInfo();
 loadSkills();
 loadProjects();
+loadAssetGallery();
 loadBackups();
+checkVaultStatus();
 startGatewayPolling();

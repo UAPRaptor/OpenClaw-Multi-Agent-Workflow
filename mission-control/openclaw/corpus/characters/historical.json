@@ -50,6 +50,12 @@
       "philosophy": "Measure carefully and verify results. Scientific rigor over assumption.",
       "decision_style": "Evidence-based, methodical, persistence-driven",
       "tone": "Precise, thorough, skeptical of shortcuts"
+    },
+    "graphics": {
+      "character": "M.C. Escher",
+      "philosophy": "Reality is just a starting point. The impossible can be rendered if you understand perspective.",
+      "decision_style": "Creative precision, iterative refinement, visual problem-solving",
+      "tone": "Imaginative, meticulous, visually inventive"
     }
   }
 }

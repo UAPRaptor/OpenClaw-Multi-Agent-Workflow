@@ -195,17 +195,20 @@ def _classify_agent(agent_id: str, agent_data: dict, expected: dict) -> dict:
         }
 
     # Check for test agents (name-based classification)
-    test_category = _classify_as_test(agent_id)
-    if test_category:
-        return {
-            "type": "test",
-            "data": {
-                "agentId": agent_id,
-                "dirPath": agent_data["dir"],
-                "category": test_category,
-                "lastModified": agent_data["lastModified"],
-            },
-        }
+    # BUT only if the agent is NOT expected by Mission Control — don't flag
+    # real managed agents as test just because their name matches a pattern.
+    if agent_id not in expected:
+        test_category = _classify_as_test(agent_id)
+        if test_category:
+            return {
+                "type": "test",
+                "data": {
+                    "agentId": agent_id,
+                    "dirPath": agent_data["dir"],
+                    "category": test_category,
+                    "lastModified": agent_data["lastModified"],
+                },
+            }
 
     # Check if managed (expected by MC and has identity)
     if agent_id in expected and agent_data["hasIdentity"]:

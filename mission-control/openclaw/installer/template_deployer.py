@@ -12,7 +12,7 @@ from openclaw.platform_utils import get_corpus_dir
 
 
 AGENT_ROLES_MINIMAL = ["pm", "architect", "builder", "qa"]
-AGENT_ROLES_FULL = ["pm", "architect", "builder", "qa", "security", "devops", "ux", "research"]
+AGENT_ROLES_FULL = ["pm", "architect", "builder", "qa", "security", "devops", "ux", "research", "graphics"]
 
 # Maps each role to its capability group for model assignment.
 # The installer collects one model per group from configured providers.
@@ -25,6 +25,7 @@ ROLE_GROUP = {
     "devops": "support",
     "ux": "support",
     "research": "support",
+    "graphics": "support",
 }
 
 ROLE_LABELS = {
@@ -36,6 +37,7 @@ ROLE_LABELS = {
     "devops": "DevOps / Release",
     "ux": "UX / Documentation",
     "research": "Research Agent",
+    "graphics": "Graphics Designer",
 }
 
 ROLE_RESPONSIBILITIES = {
@@ -94,6 +96,13 @@ ROLE_RESPONSIBILITIES = {
         "Identify risks and constraints",
         "Propose implementation options",
     ],
+    "graphics": [
+        "Generate images, logos, icons, and visual assets using AI image generation",
+        "Create splash screens, banners, and marketing graphics",
+        "Produce UI mockup screenshots and visual prototypes",
+        "Generate and iterate on design concepts from text descriptions",
+        "Save all generated assets to the project's assets/ directory",
+    ],
 }
 
 ROLE_OUTPUTS = {
@@ -105,6 +114,7 @@ ROLE_OUTPUTS = {
     "devops": ["build packages", "deployment scripts", "release notes"],
     "ux": ["ui-wireframes.md", "design-system.md", "product docs"],
     "research": ["technical-options.md", "research.md"],
+    "graphics": ["assets/ (generated images)", "design-concepts.md", "asset-manifest.md"],
 }
 
 # Defines the explicit handoff chain — who each agent receives work from and passes to.
@@ -117,6 +127,7 @@ ROLE_CHAIN = {
     "devops":    {"receives_from": "qa",              "hands_to": "pm"},
     "ux":        {"receives_from": "pm",              "hands_to": "builder"},
     "research":  {"receives_from": "architect or pm", "hands_to": "architect"},
+    "graphics":  {"receives_from": "pm or ux",       "hands_to": "builder"},
 }
 
 # Defines exactly what must exist before each agent may begin work.
@@ -152,6 +163,11 @@ ROLE_START_CONDITIONS = {
     "research": [
         "Architect or PM has identified a research need",
         "A QUESTION ticket or handoff exists requesting research",
+    ],
+    "graphics": [
+        "PM, UX, or Builder has requested visual assets via HANDOFF.md or a ticket",
+        "Asset request includes: what to generate, dimensions/size, intended usage location",
+        "If request is vague, create a QUESTION ticket before generating",
     ],
 }
 
@@ -473,6 +489,148 @@ Tickets are in the workspace project folder: `tickets/open/` and `tickets/closed
 - Commit all changes with clear messages
 - Update status.md with milestone progress
 - Add HANDOFF.md row to QA describing what was built and how to test it""",
+    "graphics": """### 1. Orientation (every session)
+- Check `HANDOFF.md` for pending image generation requests
+- Check `tickets/open/` for any TASK or FEAT tickets assigned to you
+- Read the project spec and any UX wireframes for visual context
+- Review existing assets in `assets/` and `asset-manifest.md`
+
+### 2. Image Generation Workflow
+You have access to the `generate_image` MCP tool for AI image generation.
+The default backend is **local** (SDXL Turbo) — fast, free, runs on this machine.
+
+**For each asset request, always specify exact requirements:**
+1. Read the description/prompt carefully — understand what's needed
+2. Determine the correct dimensions for the asset type (see size guide below)
+3. Choose an appropriate art style
+4. Generate using `generate_image` with ALL parameters filled in
+5. If the result needs iteration, refine the prompt and regenerate
+6. Document every asset in `asset-manifest.md` immediately after generating
+
+**Always provide these parameters when calling `generate_image`:**
+- `prompt` — detailed description of the image content
+- `filename` — use naming convention: `{category}-{name}-{size}` (e.g. `icon-settings-24`, `banner-hero-1024x576`)
+- `width` / `height` — exact pixel dimensions (multiples of 64, range 256-1024)
+- `style` — art style (see options below)
+- `output_format` — "png" for icons/logos (lossless, supports transparency), "jpg" for photos/large images
+- `backend` — "local" (default, free) or "gemini"/"openai" for cloud
+
+**Standard asset sizes:**
+| Asset Type       | Width | Height | Format | Notes                         |
+|-----------------|-------|--------|--------|-------------------------------|
+| App icon         | 512   | 512    | png    | Square, simple shapes         |
+| Favicon          | 256   | 256    | png    | Minimal detail, recognizable  |
+| Logo             | 1024  | 512    | png    | Landscape, text-friendly      |
+| Banner (16:9)    | 1024  | 576    | jpg    | Hero images, headers          |
+| Card/thumbnail   | 768   | 512    | jpg    | Preview images                |
+| Social square    | 1024  | 1024   | jpg    | Social media posts            |
+| Portrait         | 576   | 1024   | jpg    | Vertical content              |
+| Splash screen    | 768   | 1024   | png    | App loading screens           |
+
+**Available styles:**
+flat vector, pixel art, watercolor, minimalist line art, photorealistic,
+3d render, comic book, low poly, isometric, hand drawn sketch, gradient mesh,
+blueprint, retro/vintage, neon glow, paper cutout
+
+**Prompt writing tips:**
+- Be specific: "A flat vector app icon showing a gear and wrench on dark blue circle" beats "an icon"
+- Include the color palette if the project has a design system
+- For icons: "simple shapes, bold colors, centered, no text"
+- For logos: "clean, professional, scalable, company-name-here"
+- For splash screens: "atmospheric, brand colors, subtle, no text overlay"
+
+### 3. Asset Organization
+
+**Folder structure** — all assets live under the project's `assets/` directory,
+organized by category. Use this exact structure:
+```
+assets/
+  icons/              App icons, toolbar icons, tab bar icons
+    icon-{name}-{size}.png
+  logos/               Brand logos, wordmarks
+    logo-{name}-{size}.png
+  splash/              Splash screens, loading screens
+    splash-{name}-{size}.png
+  banners/             Hero images, headers, promotional
+    banner-{name}-{width}x{height}.jpg
+  backgrounds/         Background textures, patterns, gradients
+    bg-{name}-{width}x{height}.jpg
+  marketing/           Social media, app store screenshots
+    social-{name}-{size}.jpg
+  mockups/             UI mockup screenshots, wireframe renders
+    mockup-{name}-{width}x{height}.png
+```
+
+**Naming convention:** `{category}-{descriptive-name}-{size-or-dimensions}.{ext}`
+- Icons: `icon-settings-512.png`, `icon-home-256.png`
+- Logos: `logo-primary-1024x512.png`, `logo-dark-512.png`
+- Banners: `banner-hero-1024x576.jpg`, `banner-onboarding-1024x576.jpg`
+- Always lowercase, hyphens not underscores, no spaces
+
+### 4. Asset Manifest
+
+Maintain `asset-manifest.md` in the project root. This is the single source of
+truth that maps every generated asset to its spec and usage. **Update it every
+time you create, replace, or delete an asset.**
+
+Format:
+```markdown
+# Asset Manifest
+
+| File | Category | Size | Style | Used In | Ticket | Status |
+|------|----------|------|-------|---------|--------|--------|
+| assets/icons/icon-settings-512.png | icon | 512x512 | flat vector | Settings screen | TASK-014 | delivered |
+| assets/logos/logo-primary-1024x512.png | logo | 1024x512 | minimalist | Header, About | TASK-015 | delivered |
+| assets/banners/banner-hero-1024x576.jpg | banner | 1024x576 | photorealistic | Landing page | FEAT-003 | in-review |
+```
+
+- **Used In**: where in the app/project this asset is displayed
+- **Ticket**: the ticket ID that requested this asset
+- **Status**: `generating` → `delivered` → `approved` (after QA/PM review)
+
+### 5. Design Handoff to Builder
+
+When assets are ready for dev to integrate:
+
+1. **Create a HANDOFF.md entry** with everything the Builder needs:
+   - File paths (exact, relative to project root)
+   - Where each asset goes in the UI (screen, component, CSS class)
+   - Dimensions and format
+   - Any CSS/styling notes (background-size, object-fit, padding)
+   - Color values if the asset establishes new brand colors
+
+2. **Handoff entry format:**
+```markdown
+### Assets Ready — [Ticket ID]
+
+**Files delivered:**
+| Asset | Path | Dimensions | Where to use |
+|-------|------|------------|--------------|
+| App icon | `assets/icons/icon-app-512.png` | 512x512 | Favicon, PWA icon, About page |
+| Hero banner | `assets/banners/banner-hero-1024x576.jpg` | 1024x576 | Landing page hero section |
+
+**Integration notes:**
+- Hero banner: use `background-size: cover; background-position: center;`
+- App icon: needs resizing to 32x32 for favicon, 180x180 for apple-touch-icon
+- Brand colors from these assets: primary #2563EB, accent #10B981
+```
+
+3. **Update the ticket** — mark the asset request ticket as `delivered` with file paths
+
+### 6. Ticket Workflow for Asset Requests
+
+When you receive an asset request (via ticket or HANDOFF.md):
+
+1. Read the request — understand dimensions, style, usage context
+2. If the request is vague, create a QUESTION ticket asking PM/UX for specifics:
+   - What screen/component is this for?
+   - What dimensions are needed?
+   - Any brand guidelines or color palette?
+   - What style (flat, photorealistic, etc.)?
+3. Generate the asset(s) with exact specs
+4. Add to `asset-manifest.md`
+5. Write the handoff entry for Builder
+6. Update the ticket status to `delivered`""",
 }
 
 

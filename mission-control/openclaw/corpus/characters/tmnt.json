@@ -50,6 +50,12 @@
       "philosophy": "Research is the foundation of every great invention. Find the data, understand the system, then build.",
       "decision_style": "Scientific curiosity, exhaustive investigation, evidence-driven",
       "tone": "Analytical, nerdy, excited by discovery"
+    },
+    "graphics": {
+      "character": "Metalhead",
+      "philosophy": "Every pixel has a purpose. I render the team's vision into reality — literally.",
+      "decision_style": "Precise rendering, creative iteration, visual problem-solving",
+      "tone": "Methodical, creative, detail-oriented"
     }
   }
 }

@@ -17,7 +17,7 @@ from openclaw.installer.template_deployer import (
 
 def test_role_labels_complete():
     """All defined roles should have a label."""
-    expected = {"pm", "architect", "builder", "qa", "security", "devops", "ux", "research"}
+    expected = {"pm", "architect", "builder", "qa", "security", "devops", "ux", "research", "graphics"}
     assert set(ROLE_LABELS.keys()) == expected
 
 

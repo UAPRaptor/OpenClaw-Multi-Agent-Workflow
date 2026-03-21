@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "openclaw-image-gen": {
+      "command": "python3",
+      "args": ["-m", "openclaw.mcp.image_gen"]
+    }
+  }
+}

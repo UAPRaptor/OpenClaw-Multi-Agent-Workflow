@@ -516,13 +516,28 @@
         <button class="agent-modal-close" onclick="closeAddAgentModal()">✕</button>
       </div>
       <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
-        <label style="font-size:12px;color:var(--text-muted)">Role ID <span style="opacity:0.5">(lowercase, no spaces — e.g. "graphics", "docs")</span>
-          <input id="addAgentRole" type="text" oninput="onAddAgentRoleChange(this.value)" style="width:100%;margin-top:4px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px" placeholder="e.g. graphics">
+        <label style="font-size:12px;color:var(--text-muted)">Agent Role
+          <select id="addAgentRole" onchange="onAddAgentRoleSelect(this.value)" style="width:100%;margin-top:4px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px">
+            <option value="">Select a role...</option>
+            <option value="pm">Project Manager</option>
+            <option value="architect">Architect</option>
+            <option value="builder">Builder / Developer</option>
+            <option value="qa">QA / Test Engineer</option>
+            <option value="security">Security Engineer</option>
+            <option value="devops">DevOps / Release</option>
+            <option value="ux">UX / Documentation</option>
+            <option value="research">Research Agent</option>
+            <option value="graphics">Graphics Designer</option>
+            <option value="_custom">Other (custom role)...</option>
+          </select>
+        </label>
+        <label id="customRoleRow" style="font-size:12px;color:var(--text-muted);display:none">Custom Role ID <span style="opacity:0.5">(lowercase, no spaces)</span>
+          <input id="addAgentCustomRole" type="text" oninput="onCustomRoleInput(this.value)" style="width:100%;margin-top:4px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px" placeholder="e.g. docs, data-eng">
         </label>
         <label style="font-size:12px;color:var(--text-muted)">Display Name
           <input id="addAgentName" type="text" style="width:100%;margin-top:4px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px" placeholder="e.g. Banksy">
         </label>
-        <label style="font-size:12px;color:var(--text-muted)">Role Label <span style="opacity:0.5">(human-readable title)</span>
+        <label style="font-size:12px;color:var(--text-muted)">Role Label <span style="opacity:0.5">(auto-filled, editable)</span>
           <input id="addAgentLabel" type="text" style="width:100%;margin-top:4px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px" placeholder="e.g. Graphics Designer">
         </label>
 

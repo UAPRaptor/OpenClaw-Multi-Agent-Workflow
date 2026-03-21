@@ -504,12 +504,27 @@ function closeAgentModal(e) {
 
 // ── Add Agent ──────────────────────────────────────────────────────────────
 
+// Role ID → Label mapping (matches template_deployer.py ROLE_LABELS)
+const ROLE_LABELS = {
+  pm: 'Project Manager',
+  architect: 'Architect',
+  builder: 'Builder / Developer',
+  qa: 'QA / Test Engineer',
+  security: 'Security Engineer',
+  devops: 'DevOps / Release',
+  ux: 'UX / Documentation',
+  research: 'Research Agent',
+  graphics: 'Graphics Designer',
+};
+
 function showAddAgentModal() {
   document.getElementById('addAgentRole').value = '';
   document.getElementById('addAgentName').value = '';
   document.getElementById('addAgentLabel').value = '';
   document.getElementById('addAgentError').style.display = 'none';
   document.getElementById('imageGenSetup').style.display = 'none';
+  document.getElementById('customRoleRow').style.display = 'none';
+  document.getElementById('addAgentCustomRole').value = '';
   _imageGenSetupShown = false;
   document.getElementById('addAgentOverlay').classList.add('open');
 }
@@ -525,8 +540,43 @@ let _imageGenSpecsCache = null;
 let _imageGenModelStatus = null;
 let _imageGenSetupShown = false;
 
-function onAddAgentRoleChange(val) {
+function onAddAgentRoleSelect(val) {
+  const customRow = document.getElementById('customRoleRow');
+  const labelInput = document.getElementById('addAgentLabel');
+
+  if (val === '_custom') {
+    customRow.style.display = 'block';
+    labelInput.value = '';
+    _onRoleResolved('');
+    return;
+  }
+
+  customRow.style.display = 'none';
+  document.getElementById('addAgentCustomRole').value = '';
+
+  // Auto-populate the label
+  if (val && ROLE_LABELS[val]) {
+    labelInput.value = ROLE_LABELS[val];
+  } else {
+    labelInput.value = '';
+  }
+
+  _onRoleResolved(val);
+}
+
+function onCustomRoleInput(val) {
   const role = val.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+  const labelInput = document.getElementById('addAgentLabel');
+  // Auto-generate a label from the custom role ID: "data-eng" → "Data Eng"
+  if (role) {
+    labelInput.value = role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  } else {
+    labelInput.value = '';
+  }
+  _onRoleResolved(role);
+}
+
+function _onRoleResolved(role) {
   const panel = document.getElementById('imageGenSetup');
   if (role === 'graphics') {
     panel.style.display = 'block';
@@ -537,6 +587,14 @@ function onAddAgentRoleChange(val) {
   } else {
     panel.style.display = 'none';
   }
+}
+
+function _getSelectedRole() {
+  const select = document.getElementById('addAgentRole').value;
+  if (select === '_custom') {
+    return document.getElementById('addAgentCustomRole').value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+  }
+  return select;
 }
 
 async function loadImageGenSetup() {
@@ -578,18 +636,18 @@ async function loadImageGenSetup() {
       const versions = coreDeps.map(d => `${d} ${deps[d].version}`).join(', ');
       depsEl.innerHTML = `
         <div style="font-size:12px;color:#4caf50;padding:6px 10px;border:1px solid #4caf5040;border-radius:4px;background:#4caf5010;">
-          Local generation ready &mdash; <span style="opacity:0.7">${versions}</span>
+          Ready for local image generation <span style="opacity:0.5;margin-left:4px;" title="${versions}">(hover for versions)</span>
         </div>`;
     } else {
-      const missing = coreDeps.filter(d => !deps[d] || !deps[d].installed);
       depsEl.innerHTML = `
-        <div style="font-size:12px;padding:8px 10px;border:1px solid var(--border);border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:12px;padding:8px 10px;border:1px solid var(--border);border-radius:4px;display:flex;justify-content:space-between;align-items:center;"
+             title="Local image generation needs PyTorch and Diffusers installed on this machine. This is a one-time setup — click Install to download them automatically.">
           <div>
-            <div style="color:var(--yellow);font-weight:500;">Local deps needed</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Missing: ${missing.join(', ')}</div>
-            <div style="font-size:11px;color:var(--text-muted);">Installs PyTorch + Diffusers (~2-4 GB)</div>
+            <div style="color:var(--yellow);font-weight:500;">Setup required for local image generation</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">One-time install of AI image libraries (~2-4 GB download)</div>
+            <div style="font-size:11px;color:var(--text-muted);">This lets the graphics agent generate images on this machine for free.</div>
           </div>
-          <button class="btn" style="padding:4px 14px;font-size:12px;flex-shrink:0;" onclick="installImageDeps(this)">Install Deps</button>
+          <button class="btn" style="padding:4px 14px;font-size:12px;flex-shrink:0;" onclick="installImageDeps(this)">Install</button>
         </div>`;
     }
 
@@ -649,24 +707,34 @@ async function installImageDeps(btn) {
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
     });
+    if (res.status === 404) {
+      btn.disabled = false;
+      btn.textContent = 'Install';
+      statusEl.innerHTML = 'Mission Control needs to be restarted to enable this feature. '
+        + '<strong>Restart MC</strong>, then try again.';
+      statusEl.style.color = 'var(--yellow)';
+      return;
+    }
     const data = await res.json();
     if (data.ok) {
-      statusEl.textContent = 'Dependencies installed successfully.';
+      statusEl.textContent = 'Image libraries installed successfully.';
       statusEl.style.color = '#4caf50';
-      // Refresh the panel to show updated deps status
       _imageGenSetupShown = false;
       _imageGenSetupShown = true;
       loadImageGenSetup();
     } else {
       btn.disabled = false;
       btn.textContent = 'Retry';
-      statusEl.textContent = `Deps install failed: ${data.error || 'Unknown error'}`;
+      const errMsg = data.error || 'Install failed — check the terminal for details.';
+      statusEl.innerHTML = `Install failed: ${errMsg.length > 200 ? errMsg.slice(0, 200) + '...' : errMsg}`
+        + '<div style="margin-top:4px;font-size:10px;opacity:0.7;">Try running manually: pip install torch diffusers transformers accelerate</div>';
       statusEl.style.color = 'var(--red)';
     }
   } catch (e) {
     btn.disabled = false;
     btn.textContent = 'Retry';
-    statusEl.textContent = `Install error: ${e.message}`;
+    statusEl.innerHTML = `Could not reach Mission Control: ${e.message}`
+      + '<div style="margin-top:4px;font-size:10px;opacity:0.7;">Make sure Mission Control is running and try again.</div>';
     statusEl.style.color = 'var(--red)';
   }
 }
@@ -712,13 +780,18 @@ async function installImageModel(modelId, btn) {
 }
 
 async function submitAddAgent() {
-  const role = document.getElementById('addAgentRole').value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+  const role = _getSelectedRole();
   const name = document.getElementById('addAgentName').value.trim();
   const label = document.getElementById('addAgentLabel').value.trim();
   const errEl = document.getElementById('addAgentError');
 
-  if (!role || !name) {
-    errEl.textContent = 'Role ID and Display Name are required.';
+  if (!role) {
+    errEl.textContent = 'Please select a role.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!name) {
+    errEl.textContent = 'Display Name is required.';
     errEl.style.display = 'block';
     return;
   }

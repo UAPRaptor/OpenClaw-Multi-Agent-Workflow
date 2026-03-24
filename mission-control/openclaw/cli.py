@@ -131,7 +131,8 @@ def _start_server(workspace_root: Path, open_path: str = "/", enable_auth: bool 
 
     watcher = None
     if workspace_root.exists():
-        watcher = WorkspaceWatcher(workspace_root, store, alert_engine)
+        from openclaw.web.websocket_hub import hub as ws_hub
+        watcher = WorkspaceWatcher(workspace_root, store, alert_engine, hub=ws_hub)
         watcher.start()
         typer.echo(f"Monitoring workspace: {workspace_root}")
     else:

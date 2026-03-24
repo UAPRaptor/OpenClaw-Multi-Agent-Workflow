@@ -9,7 +9,7 @@ import os
 import sys
 import platform
 import shutil
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -312,27 +312,67 @@ async def list_assets() -> JSONResponse:
     if not active:
         return JSONResponse({"assets": [], "project": None})
 
-    assets_dir = _workspace_root / active["path"] / "assets"
-    if not assets_dir.exists():
+    # Only scan the active project's own assets/ — never fall back to workspace-level,
+    # which would bleed files from other projects into the gallery.
+    project_assets_dir = _workspace_root / active["path"] / "assets"
+
+    if not project_assets_dir.exists():
         return JSONResponse({"assets": [], "project": active["name"]})
 
+    scan_dirs: list[tuple[Path, Path]] = [
+        (project_assets_dir, _workspace_root / active["path"])
+    ]
+
     assets = []
-    for f in sorted(assets_dir.rglob("*"), key=lambda p: p.stat().st_mtime, reverse=True):
-        if f.is_file() and f.suffix.lower() in _IMAGE_EXTENSIONS:
-            rel = f.relative_to(_workspace_root / active["path"])
+    seen: set[str] = set()  # deduplicate by filename
+    for assets_dir, rel_base in scan_dirs:
+        for f in sorted(assets_dir.rglob("*"), key=lambda p: p.stat().st_mtime, reverse=True):
+            if not f.is_file():
+                continue
+            if f.suffix.lower() not in _IMAGE_EXTENSIONS:
+                continue
+            if f.name in seen:
+                continue
+            # Skip .rejected/ and .liked side-car files
+            if ".rejected" in f.parts:
+                continue
+            seen.add(f.name)
+            rel = f.relative_to(rel_base)
             stat = f.stat()
-            # Subfolder category (e.g. "icons", "banners") or "root"
             parts = rel.parts
             category = parts[1] if len(parts) > 2 else "uncategorized"
             assets.append({
                 "name": f.name,
                 "path": str(rel),
                 "category": category,
+                "rejected": False,
                 "size_bytes": stat.st_size,
                 "size_kb": round(stat.st_size / 1024, 1),
                 "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
                 "ext": f.suffix.lower(),
             })
+
+    # Also include rejected assets (from .rejected/) so they can be shown at the bottom
+    rejected_seen: set[str] = set()
+    for assets_dir, rel_base in scan_dirs:
+        rejected_dir = assets_dir / ".rejected"
+        if not rejected_dir.exists():
+            continue
+        for f in sorted(rejected_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            if f.is_file() and f.suffix.lower() in _IMAGE_EXTENSIONS and f.name not in rejected_seen:
+                rejected_seen.add(f.name)
+                rel = f.relative_to(rel_base)
+                stat = f.stat()
+                assets.append({
+                    "name": f.name,
+                    "path": str(rel),
+                    "category": "rejected",
+                    "rejected": True,
+                    "size_bytes": stat.st_size,
+                    "size_kb": round(stat.st_size / 1024, 1),
+                    "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                    "ext": f.suffix.lower(),
+                })
 
     return JSONResponse({"assets": assets, "project": active["name"]})
 
@@ -347,10 +387,11 @@ async def serve_asset(path: str) -> Response:
     if not active:
         return JSONResponse({"error": "no active project"}, status_code=404)
 
-    file_path = (_workspace_root / active["path"] / path).resolve()
+    # Only serve files from within the active project's directory
     project_root = (_workspace_root / active["path"]).resolve()
+    file_path = (project_root / path).resolve()
 
-    # Security: ensure the path is within the project directory
+    # Security: file must be inside the active project
     if not str(file_path).startswith(str(project_root)):
         return JSONResponse({"error": "access denied"}, status_code=403)
     if not file_path.exists() or not file_path.is_file():
@@ -363,6 +404,81 @@ async def serve_asset(path: str) -> Response:
     }
     content_type = mime_map.get(file_path.suffix.lower(), "application/octet-stream")
     return Response(content=file_path.read_bytes(), media_type=content_type)
+
+
+@app.post("/api/assets/reject")
+async def reject_asset(request: Request) -> JSONResponse:
+    """Soft-delete an asset by moving it to assets/.rejected/ with a reason note."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    from openclaw.monitor.agent_state_reader import read_active_project
+    active = read_active_project(_workspace_root)
+    if not active:
+        return JSONResponse({"ok": False, "error": "No active project"}, status_code=400)
+
+    body = await request.json()
+    asset_path = body.get("path", "")
+    reason = body.get("reason", "").strip() or "No reason given"
+
+    project_dir = (_workspace_root / active["path"]).resolve()
+    src = (project_dir / asset_path).resolve()
+
+    # Security: ensure path is within project
+    if not str(src).startswith(str(project_dir)):
+        return JSONResponse({"ok": False, "error": "access denied"}, status_code=403)
+    if not src.exists() or not src.is_file():
+        return JSONResponse({"ok": False, "error": "file not found"}, status_code=404)
+
+    rejected_dir = project_dir / "assets" / ".rejected"
+    rejected_dir.mkdir(parents=True, exist_ok=True)
+
+    dest = rejected_dir / src.name
+    # Avoid overwrite — append counter if needed
+    counter = 1
+    while dest.exists():
+        stem = src.stem
+        dest = rejected_dir / f"{stem}_{counter}{src.suffix}"
+        counter += 1
+
+    import shutil
+    shutil.move(str(src), str(dest))
+
+    # Write a reason note alongside the rejected file
+    note_path = dest.with_suffix(dest.suffix + ".reason.txt")
+    note_path.write_text(f"Rejected: {reason}\nOriginal path: {asset_path}\n", encoding="utf-8")
+
+    return JSONResponse({"ok": True, "moved_to": str(dest.relative_to(project_dir))})
+
+
+@app.post("/api/assets/accept")
+async def accept_asset(request: Request) -> JSONResponse:
+    """Records a positive note for an asset (writes a .liked.txt alongside it)."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    from openclaw.monitor.agent_state_reader import read_active_project
+    active = read_active_project(_workspace_root)
+    if not active:
+        return JSONResponse({"ok": False, "error": "No active project"}, status_code=400)
+
+    body = await request.json()
+    asset_path = body.get("path", "")
+    reason = body.get("reason", "").strip()
+
+    project_dir = (_workspace_root / active["path"]).resolve()
+    src = (project_dir / asset_path).resolve()
+
+    if not str(src).startswith(str(project_dir)):
+        return JSONResponse({"ok": False, "error": "access denied"}, status_code=403)
+    if not src.exists() or not src.is_file():
+        return JSONResponse({"ok": False, "error": "file not found"}, status_code=404)
+
+    note_path = src.with_suffix(src.suffix + ".liked.txt")
+    note_text = f"Approved by operator.\n"
+    if reason:
+        note_text += f"Feedback: {reason}\n"
+    note_path.write_text(note_text, encoding="utf-8")
+
+    return JSONResponse({"ok": True})
 
 
 @app.post("/api/assets/commit")
@@ -449,6 +565,195 @@ async def commit_assets(request: Request) -> JSONResponse:
 
     except asyncio.TimeoutError:
         return JSONResponse({"ok": False, "error": "Push timed out"}, status_code=504)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/projects/push")
+async def push_project(request: Request) -> JSONResponse:
+    """Stages all changes in the active project, commits, and pushes to GitHub."""
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    from openclaw.monitor.agent_state_reader import read_active_project
+    active = read_active_project(_workspace_root)
+    if not active:
+        return JSONResponse({"ok": False, "error": "No active project"}, status_code=400)
+
+    project_dir = (_workspace_root / active["path"]).resolve()
+    git_dir = project_dir / ".git"
+    if not git_dir.exists():
+        return JSONResponse({
+            "ok": False,
+            "not_git_repo": True,
+            "project_name": active["name"],
+            "error": "Project is not connected to GitHub yet.",
+        }, status_code=400)
+
+    body = await request.json()
+    commit_msg = body.get("message", "").strip()
+
+    try:
+        # Stage all changes
+        stage_proc = await asyncio.create_subprocess_exec(
+            "git", "add", "-A",
+            cwd=str(project_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await stage_proc.communicate()
+
+        # Check if there's anything to commit
+        status_proc = await asyncio.create_subprocess_exec(
+            "git", "diff", "--cached", "--quiet",
+            cwd=str(project_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await status_proc.communicate()
+        if status_proc.returncode == 0:
+            return JSONResponse({"ok": True, "message": "Nothing to commit — project is up to date."})
+
+        # Count staged files
+        count_proc = await asyncio.create_subprocess_exec(
+            "git", "diff", "--cached", "--name-only",
+            cwd=str(project_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        count_out, _ = await count_proc.communicate()
+        file_count = len(count_out.decode().strip().splitlines())
+
+        if not commit_msg:
+            commit_msg = f"Update project — {file_count} file(s) via OpenClaw Mission Control"
+
+        # Commit
+        commit_proc = await asyncio.create_subprocess_exec(
+            "git", "commit", "-m", commit_msg,
+            cwd=str(project_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        _, commit_err = await commit_proc.communicate()
+        if commit_proc.returncode != 0:
+            return JSONResponse({"ok": False, "error": commit_err.decode(errors="replace")[:500]}, status_code=500)
+
+        # Push
+        push_proc = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                "git", "push",
+                cwd=str(project_dir),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            ),
+            timeout=60,
+        )
+        push_out, push_err = await push_proc.communicate()
+        pushed = push_proc.returncode == 0
+
+        return JSONResponse({
+            "ok": True,
+            "committed": file_count,
+            "pushed": pushed,
+            "push_error": push_err.decode(errors="replace")[:300] if not pushed else None,
+            "message": commit_msg,
+        })
+
+    except asyncio.TimeoutError:
+        return JSONResponse({"ok": False, "error": "Push timed out"}, status_code=504)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/projects/publish")
+async def publish_project(request: Request) -> JSONResponse:
+    """
+    Initialises a local project as a git repo, creates a GitHub repo via gh CLI,
+    and pushes. Used when 'Push to GitHub' is clicked on a non-git project.
+    Body: {repo_name: str, private: bool, commit_message: str}
+    """
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+    if not shutil.which("gh"):
+        return JSONResponse({"ok": False, "error": "gh CLI not found. Install from https://cli.github.com"}, status_code=500)
+
+    from openclaw.monitor.agent_state_reader import read_active_project
+    active = read_active_project(_workspace_root)
+    if not active:
+        return JSONResponse({"ok": False, "error": "No active project"}, status_code=400)
+
+    body = await request.json()
+    repo_name = body.get("repo_name", "").strip() or active["name"]
+    private = bool(body.get("private", True))
+    commit_msg = body.get("commit_message", "").strip() or "Initial commit via OpenClaw Mission Control"
+
+    # Sanitise repo name
+    import re as _re
+    repo_name = _re.sub(r"[^a-zA-Z0-9._-]", "-", repo_name).strip("-")
+    if not repo_name:
+        return JSONResponse({"ok": False, "error": "Invalid repo name"}, status_code=400)
+
+    project_dir = (_workspace_root / active["path"]).resolve()
+    visibility = "--private" if private else "--public"
+
+    try:
+        # git init (idempotent if already a repo)
+        init = await asyncio.create_subprocess_exec(
+            "git", "init",
+            cwd=str(project_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await init.communicate()
+
+        # Configure git user if not already set (needed for first commit)
+        for key, val in [("user.email", "openclaw@localhost"), ("user.name", "OpenClaw Mission Control")]:
+            cfg = await asyncio.create_subprocess_exec(
+                "git", "config", "--global", "--get", key,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            out, _ = await cfg.communicate()
+            if not out.strip():
+                set_cfg = await asyncio.create_subprocess_exec(
+                    "git", "config", "--global", key, val,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                await set_cfg.communicate()
+
+        # Stage everything
+        add = await asyncio.create_subprocess_exec(
+            "git", "add", "-A",
+            cwd=str(project_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await add.communicate()
+
+        # Commit
+        commit = await asyncio.create_subprocess_exec(
+            "git", "commit", "-m", commit_msg,
+            cwd=str(project_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        _, commit_err = await commit.communicate()
+        if commit.returncode != 0:
+            err = commit_err.decode(errors="replace").strip()
+            # "nothing to commit" is fine — carry on
+            if "nothing to commit" not in err:
+                return JSONResponse({"ok": False, "error": f"git commit failed: {err[:300]}"}, status_code=500)
+
+        # Create GitHub repo and push via gh CLI
+        gh = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                "gh", "repo", "create", repo_name,
+                visibility, "--source=.", "--push",
+                cwd=str(project_dir),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            ),
+            timeout=90,
+        )
+        gh_out, gh_err = await gh.communicate()
+        if gh.returncode != 0:
+            err = gh_err.decode(errors="replace").strip()
+            return JSONResponse({"ok": False, "error": f"gh repo create failed: {err[:400]}"}, status_code=500)
+
+        repo_url = gh_out.decode(errors="replace").strip().splitlines()[-1] if gh_out.strip() else ""
+        return JSONResponse({"ok": True, "repo_name": repo_name, "repo_url": repo_url})
+
+    except asyncio.TimeoutError:
+        return JSONResponse({"ok": False, "error": "Publish timed out (90s)"}, status_code=504)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -1980,7 +2285,12 @@ async def add_agent(request: Request) -> JSONResponse:
     try:
         body = AddAgentRequest(**(await request.json()))
     except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        # Extract clean message from Pydantic validation errors
+        msg = str(e)
+        if hasattr(e, "errors"):
+            errs = e.errors() if callable(e.errors) else e.errors
+            msg = "; ".join(err.get("msg", str(err)) for err in errs)
+        return JSONResponse({"ok": False, "error": msg}, status_code=400)
 
     role = body.role
     name = body.name.strip()
@@ -1998,7 +2308,7 @@ async def add_agent(request: Request) -> JSONResponse:
 
     # Build minimal agent dict compatible with register_openclaw_agents
     workspace_path = str(
-        Path(_workspace or Path.home() / "Documents" / "openclaw-workspace")
+        Path(_workspace_root or Path.home() / "Documents" / "openclaw-workspace")
     )
     agent = {
         "role": role,
@@ -2031,10 +2341,196 @@ async def add_agent(request: Request) -> JSONResponse:
 
         return JSONResponse({"ok": True, "created": created})
     except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[MC] add_agent failed: {e}\n{tb}")
         return JSONResponse(
             {"ok": False, "error": f"Failed to add agent: {str(e)}"},
             status_code=500,
         )
+
+
+# ── Agent Identity Swap ───────────────────────────────────────────────────────
+
+
+def _regenerate_agents_md(workspace_root: Path, agents: list[dict], theme_label: str = "Custom") -> None:
+    """Re-render AGENTS.md from the full agent list (preserves projects/assets)."""
+    from jinja2 import Environment, FileSystemLoader, StrictUndefined
+    corpus = get_corpus_dir()
+    env = Environment(
+        loader=FileSystemLoader(str(corpus / "workspace")),
+        undefined=StrictUndefined,
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+    tmpl = env.get_template("AGENTS.md.template")
+    rendered = tmpl.render(
+        agents=agents,
+        team_name=f"{theme_label} Development",
+        team_size=len(agents),
+        theme_label=theme_label,
+        install_date=date.today().isoformat(),
+        operator_name="Operator",
+        workspace_path=str(workspace_root),
+        default_project="",
+    )
+    (workspace_root / "AGENTS.md").write_text(rendered, encoding="utf-8")
+
+
+@app.post("/api/agents/swap")
+async def swap_agent_identity(request: Request) -> JSONResponse:
+    """
+    Swap a single agent's character identity without destroying projects/sessions.
+    Body: {role: str, name: str, label?: str}
+    Regenerates IDENTITY.md, updates openclaw.json and AGENTS.md.
+    """
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+
+    body = await request.json()
+    role = body.get("role", "").strip().lower()
+    new_name = body.get("name", "").strip()
+    new_label = body.get("label", "").strip()
+
+    if not role or not new_name:
+        return JSONResponse({"ok": False, "error": "role and name are required"}, status_code=400)
+
+    agent_dir = Path.home() / ".openclaw" / "agents" / role
+    if not agent_dir.exists() or not (agent_dir / "IDENTITY.md").exists():
+        return JSONResponse({"ok": False, "error": f"Agent '{role}' not found"}, status_code=404)
+
+    try:
+        from openclaw.installer.template_deployer import (
+            build_agent_list, ROLE_LABELS, ROLE_CHAIN, AGENT_ROLES_FULL,
+        )
+        from openclaw.installer.agent_registrar import register_openclaw_agents
+
+        # Build agent dict for just this role with custom character
+        custom_chars = {role: new_name}
+        # Use empty theme data — build_agent_list falls back to custom_characters
+        agents = build_agent_list(
+            [role], {"roles": {}},
+            {"strategic": "claude-sonnet-4-6", "implementation": "claude-sonnet-4-6", "support": "claude-sonnet-4-6"},
+            custom_characters=custom_chars,
+        )
+        agent = agents[0]
+        if new_label:
+            agent["role_label"] = new_label
+        agent["workspace_path"] = str(_workspace_root)
+
+        # Regenerate IDENTITY.md and update openclaw.json
+        register_openclaw_agents([agent])
+
+        # Rebuild AGENTS.md with all agents (read current identities for others)
+        # Use canonical workflow order so PM appears first, not alphabetical
+        all_agents = []
+        agents_base = Path.home() / ".openclaw" / "agents"
+        workflow_order = ["pm", "architect", "builder", "qa", "security", "devops", "ux", "research", "graphics"]
+        existing_roles = [d.name for d in agents_base.iterdir() if d.is_dir() and (d / "IDENTITY.md").exists()]
+        ordered_roles = [r for r in workflow_order if r in existing_roles] + \
+                        [r for r in existing_roles if r not in workflow_order]
+        for r in ordered_roles:
+            role_dir = agents_base / r
+            if r == role:
+                all_agents.append(agent)
+            else:
+                # Build from current theme data (read character from IDENTITY.md)
+                identity = (role_dir / "IDENTITY.md").read_text(encoding="utf-8")
+                char = "—"
+                phil = ""
+                for line in identity.splitlines():
+                    if char == "—" and line.startswith("# "):
+                        char = line[2:].strip()
+                    elif "**Philosophy:**" in line:
+                        phil = line.split("**Philosophy:**", 1)[1].strip()
+                    if char != "—" and phil:
+                        break
+                other = build_agent_list(
+                    [r], {"roles": {}},
+                    {"strategic": "claude-sonnet-4-6", "implementation": "claude-sonnet-4-6", "support": "claude-sonnet-4-6"},
+                    custom_characters={r: char},
+                )[0]
+                other["philosophy"] = phil
+                other["workspace_path"] = str(_workspace_root)
+                all_agents.append(other)
+
+        _regenerate_agents_md(_workspace_root, all_agents)
+
+        return JSONResponse({
+            "ok": True,
+            "swapped": role,
+            "old_to_new": new_name,
+            "message": f"{ROLE_LABELS.get(role, role)} is now {new_name}",
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/theme/apply")
+async def apply_theme(request: Request) -> JSONResponse:
+    """
+    Bulk swap all agent identities to a new character theme.
+    Body: {theme: str, custom_characters?: {role: name}}
+    Regenerates all IDENTITY.md files, AGENTS.md, and updates openclaw.json.
+    Projects, assets, and sessions are preserved.
+    """
+    if _workspace_root is None:
+        return JSONResponse({"error": "no workspace"}, status_code=503)
+
+    body = await request.json()
+    theme = body.get("theme", "").strip()
+    custom_chars = body.get("custom_characters")
+
+    if not theme:
+        return JSONResponse({"ok": False, "error": "theme is required"}, status_code=400)
+
+    try:
+        from openclaw.installer.template_deployer import (
+            load_character_theme, build_agent_list, deploy_workspace_files,
+            AGENT_ROLES_FULL,
+        )
+        from openclaw.installer.agent_registrar import register_openclaw_agents
+
+        # Detect which roles currently exist
+        agents_base = Path.home() / ".openclaw" / "agents"
+        existing_roles = [
+            d.name for d in sorted(agents_base.iterdir())
+            if d.is_dir() and (d / "IDENTITY.md").exists()
+        ]
+        if not existing_roles:
+            return JSONResponse({"ok": False, "error": "No agents installed"}, status_code=400)
+
+        # Load theme and build full agent list
+        theme_data = load_character_theme(theme)
+        model_map = {
+            "strategic": "claude-sonnet-4-6",
+            "implementation": "claude-sonnet-4-6",
+            "support": "claude-sonnet-4-6",
+        }
+        agents = build_agent_list(existing_roles, theme_data, model_map, custom_characters=custom_chars)
+        for agent in agents:
+            agent["workspace_path"] = str(_workspace_root)
+
+        # Regenerate all IDENTITY.md files and update openclaw.json
+        register_openclaw_agents(agents)
+
+        # Regenerate AGENTS.md with new theme
+        _regenerate_agents_md(_workspace_root, agents, theme_label=theme_data.get("label", theme))
+
+        roster = {a["role"]: a["character"] for a in agents}
+        return JSONResponse({
+            "ok": True,
+            "theme": theme,
+            "label": theme_data.get("label", theme),
+            "roster": roster,
+            "message": f"Applied {theme_data.get('label', theme)} theme to {len(agents)} agents",
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 # ── Vault (encrypted credential storage) ─────────────────────────────────────
@@ -2647,6 +3143,127 @@ async def clear_chat_session(agent_id: str) -> JSONResponse:
         return JSONResponse({"ok": False, "error": "Invalid agentId"}, status_code=400)
     _chat_sessions.pop(agent_id, None)
     return JSONResponse({"ok": True, "agentId": agent_id})
+
+
+# ── Team Chat ─────────────────────────────────────────────────────────────────
+
+from openclaw.monitor.chat_aggregator import ChatAggregator
+
+_chat_aggregator: ChatAggregator | None = None
+
+
+def _get_chat_aggregator() -> ChatAggregator:
+    global _chat_aggregator
+    if _chat_aggregator is None:
+        _chat_aggregator = ChatAggregator(Path.home() / ".openclaw" / "agents")
+    return _chat_aggregator
+
+
+def _agent_character_map() -> dict[str, str]:
+    """Build {role: character_name} from current agent state."""
+    agents_base = Path.home() / ".openclaw" / "agents"
+    char_map: dict[str, str] = {}
+    if not agents_base.exists():
+        return char_map
+    for d in agents_base.iterdir():
+        if not d.is_dir():
+            continue
+        identity = d / "IDENTITY.md"
+        if identity.exists():
+            for line in identity.read_text(encoding="utf-8").splitlines():
+                if line.startswith("# "):
+                    char_map[d.name] = line[2:].strip()
+                    break
+    return char_map
+
+
+@app.get("/api/team-chat/messages")
+async def team_chat_messages(request: Request) -> JSONResponse:
+    """
+    Returns unified team chat timeline from all agent sessions.
+    Query params: cursor (base64-encoded byte offsets), limit (default 100).
+    """
+    agg = _get_chat_aggregator()
+    cursor_str = request.query_params.get("cursor", "")
+    limit = min(int(request.query_params.get("limit", "100")), 500)
+
+    if cursor_str:
+        cursors = ChatAggregator.decode_cursor(cursor_str)
+        messages, new_cursors = agg.scan_incremental(cursors)
+    else:
+        messages, new_cursors = agg.scan_all(limit=limit)
+
+    return JSONResponse({
+        "ok": True,
+        "messages": messages,
+        "cursor": ChatAggregator.encode_cursor(new_cursors),
+        "agents": _agent_character_map(),
+    })
+
+
+@app.post("/api/team-chat/send")
+async def team_chat_send(request: Request) -> JSONResponse:
+    """
+    Sends a message to an agent from team chat context.
+    Body: {agentId?: str, message: str}
+    Defaults to PM if no agentId specified.
+    """
+    body = await request.json()
+    message = body.get("message", "").strip()
+    agent_id = body.get("agentId", "pm").strip() or "pm"
+
+    if not message:
+        return JSONResponse({"ok": False, "error": "Message is required"}, status_code=400)
+
+    import re as _re
+    if not _re.match(r'^[a-zA-Z0-9_-]{1,64}$', agent_id):
+        return JSONResponse({"ok": False, "error": "Invalid agentId"}, status_code=400)
+
+    session_id = _chat_sessions.get(agent_id)
+
+    cmd = ["openclaw", "agent", "--agent", agent_id, "--message", message, "--json"]
+    if session_id and _re.match(r'^[a-zA-Z0-9_-]{1,128}$', str(session_id)):
+        cmd += ["--session-id", str(session_id)]
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return JSONResponse({"ok": False, "error": "Agent timed out (120s)"}, status_code=408)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+    if proc.returncode != 0:
+        return JSONResponse({
+            "ok": False,
+            "error": stderr.decode(errors="replace").strip() or "Agent command failed",
+        }, status_code=500)
+
+    try:
+        data = json.loads(stdout.decode(errors="replace"))
+        payloads = data.get("result", {}).get("payloads", [])
+        response_text = payloads[0].get("text", "") if payloads else ""
+        meta = data.get("result", {}).get("meta", {}).get("agentMeta", {})
+        new_session_id = meta.get("sessionId")
+        if new_session_id:
+            _chat_sessions[agent_id] = new_session_id
+        return JSONResponse({
+            "ok": True,
+            "response": response_text,
+            "agent": agent_id,
+            "sessionId": new_session_id,
+            "model": meta.get("model", ""),
+        })
+    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        return JSONResponse({"ok": False, "error": f"Parse error: {e}"}, status_code=500)
 
 
 @app.get("/api/agents/main")

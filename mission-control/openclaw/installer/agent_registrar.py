@@ -103,11 +103,14 @@ def _register_agents_in_config(agent_ids: list[str], workspace_path: str | None 
         # Build character name lookup from agents list (role -> character)
         char_map = {a["role"]: a.get("character", "") for a in (agents or [])}
 
-        # Add each agent (skip if already exists)
+        # Add or update each agent
         openclaw_agents_base = str(Path.home() / ".openclaw" / "agents")
         for agent_id in agent_ids:
             existing = [a for a in data["agents"]["list"] if a.get("id") == agent_id]
             if existing:
+                # Update identity name on existing entry if character data provided
+                if char_map.get(agent_id):
+                    existing[0]["identity"] = {"name": char_map[agent_id]}
                 continue
             entry: dict = {
                 "id": agent_id,

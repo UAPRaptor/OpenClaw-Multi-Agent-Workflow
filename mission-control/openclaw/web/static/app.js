@@ -26,9 +26,17 @@ function connect() {
 
   ws.onmessage = (evt) => {
     try {
-      const state = JSON.parse(evt.data);
-      lastState = state;
-      render(state);
+      const data = JSON.parse(evt.data);
+      if (data.type === 'team_chat') {
+        // Real-time team chat update from file watcher
+        if (data.messages && data.messages.length) {
+          appendTeamChatMessages(data.messages);
+        }
+      } else {
+        // Normal state broadcast
+        lastState = data;
+        render(data);
+      }
     } catch (e) { /* ignore parse errors */ }
   };
 
@@ -138,10 +146,18 @@ async function gatewayAction(action) {
   }
 }
 
-function showGatewayBanner(message) {
+function showGatewayBanner(message, action) {
   const banner = document.getElementById('gatewayBanner');
   const text = document.getElementById('gatewayBannerText');
+  const btn = document.getElementById('gatewayBannerAction');
   text.textContent = message;
+  if (action) {
+    btn.textContent = action.label;
+    btn.onclick = action.onclick;
+    btn.style.display = '';
+  } else {
+    btn.style.display = 'none';
+  }
   banner.style.display = 'flex';
 }
 
@@ -219,6 +235,17 @@ function render(state) {
   renderTickets(state.tickets || {});
   renderActivity(state.activity || []);
   renderOvernight(state.overnight || {});
+  scheduleAssetRefresh();
+}
+
+// Throttled asset gallery refresh — re-fetches at most once per 30s on WS updates
+let _assetRefreshTimer = null;
+function scheduleAssetRefresh() {
+  if (_assetRefreshTimer) return;
+  _assetRefreshTimer = setTimeout(() => {
+    _assetRefreshTimer = null;
+    loadAssetGallery();
+  }, 30000);
 }
 
 // ── Alerts ─────────────────────────────────────────────────────────────────
@@ -303,6 +330,13 @@ let _agentsData = {};
 
 function renderAgents(agents) {
   _agentsData = agents;
+  // Update team chat agent selector with current agent data
+  if (!Object.keys(_tcAgents).length && Object.keys(agents).length) {
+    for (const [role, a] of Object.entries(agents)) {
+      _tcAgents[role] = a.character || role;
+    }
+    _updateTcAgentSelect();
+  }
   const grid = document.getElementById('agentGrid');
   const entries = Object.values(agents);
 
@@ -517,6 +551,8 @@ const ROLE_LABELS = {
   graphics: 'Graphics Designer',
 };
 
+let _swapMode = false;  // true when replacing an existing agent's identity
+
 function showAddAgentModal() {
   document.getElementById('addAgentRole').value = '';
   document.getElementById('addAgentName').value = '';
@@ -526,7 +562,33 @@ function showAddAgentModal() {
   document.getElementById('customRoleRow').style.display = 'none';
   document.getElementById('addAgentCustomRole').value = '';
   _imageGenSetupShown = false;
+  _swapMode = false;
+  _updateSwapNotice('');
+  document.getElementById('addAgentSubmitBtn').textContent = 'Add Agent';
   document.getElementById('addAgentOverlay').classList.add('open');
+}
+
+function _getExistingAgent(role) {
+  if (!role || !lastState || !lastState.agents) return null;
+  return lastState.agents[role] || null;
+}
+
+function _updateSwapNotice(role) {
+  let notice = document.getElementById('addAgentSwapNotice');
+  if (!notice) return;
+  const btn = document.getElementById('addAgentSubmitBtn');
+  const existing = _getExistingAgent(role);
+  if (existing) {
+    const char = existing.character || existing.displayName || role;
+    notice.innerHTML = `<span style="color:var(--yellow);">⚠</span> A <strong>${ROLE_LABELS[role] || role}</strong> already exists: <strong>${escHtml(char)}</strong>. Submitting will swap their identity.`;
+    notice.style.display = 'block';
+    btn.textContent = 'Swap Identity';
+    _swapMode = true;
+  } else {
+    notice.style.display = 'none';
+    btn.textContent = 'Add Agent';
+    _swapMode = false;
+  }
 }
 
 function closeAddAgentModal(e) {
@@ -548,6 +610,7 @@ function onAddAgentRoleSelect(val) {
     customRow.style.display = 'block';
     labelInput.value = '';
     _onRoleResolved('');
+    _updateSwapNotice('');
     return;
   }
 
@@ -562,6 +625,7 @@ function onAddAgentRoleSelect(val) {
   }
 
   _onRoleResolved(val);
+  _updateSwapNotice(val);
 }
 
 function onCustomRoleInput(val) {
@@ -796,25 +860,141 @@ async function submitAddAgent() {
     return;
   }
 
+  const endpoint = _swapMode ? '/api/agents/swap' : '/api/agents/add';
+
   try {
-    const res = await fetch('/api/agents/add', {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role, name, label: label || name }),
     });
+    if (!res.ok && res.headers.get('content-type')?.indexOf('application/json') === -1) {
+      errEl.textContent = `Server error (${res.status})`;
+      errEl.style.display = 'block';
+      return;
+    }
     const data = await res.json();
     if (data.ok) {
       closeAddAgentModal();
+      if (_swapMode) {
+        showGatewayBanner(data.message || `Swapped ${role} identity to ${name}`);
+      }
       refreshGatewayStatus();
-      // Force a state refresh after a short delay
       setTimeout(() => location.reload(), 1000);
     } else {
-      errEl.textContent = data.error || 'Failed to add agent.';
+      errEl.textContent = data.error || 'Failed.';
       errEl.style.display = 'block';
     }
   } catch (e) {
     errEl.textContent = `Error: ${e.message}`;
     errEl.style.display = 'block';
+  }
+}
+
+// ── Theme Switcher ─────────────────────────────────────────────────────────
+
+let _themesCache = null;
+
+async function loadThemes() {
+  if (_themesCache) return _themesCache;
+  try {
+    const res = await fetch('/api/themes');
+    _themesCache = await res.json();
+    return _themesCache;
+  } catch { return []; }
+}
+
+async function showThemeSwitcher() {
+  const overlay = document.getElementById('themeSwitcherOverlay');
+  const select = document.getElementById('themeSwitcherSelect');
+  const preview = document.getElementById('themeRosterPreview');
+  const errEl = document.getElementById('themeSwitcherError');
+  const applyBtn = document.getElementById('themeSwitcherApplyBtn');
+
+  errEl.style.display = 'none';
+  preview.style.display = 'none';
+  applyBtn.disabled = true;
+  select.innerHTML = '<option value="">Loading themes...</option>';
+  overlay.style.display = 'flex';
+
+  const themes = await loadThemes();
+  select.innerHTML = '<option value="">Select a theme...</option>' +
+    themes.map(t => `<option value="${t.id}">${escHtml(t.label)}</option>`).join('');
+}
+
+function closeThemeSwitcher(e) {
+  if (e && e.target !== document.getElementById('themeSwitcherOverlay')) return;
+  document.getElementById('themeSwitcherOverlay').style.display = 'none';
+}
+
+function previewThemeRoster(themeId) {
+  const preview = document.getElementById('themeRosterPreview');
+  const applyBtn = document.getElementById('themeSwitcherApplyBtn');
+
+  if (!themeId || !_themesCache) {
+    preview.style.display = 'none';
+    applyBtn.disabled = true;
+    return;
+  }
+
+  const theme = _themesCache.find(t => t.id === themeId);
+  if (!theme || !theme.roles) {
+    preview.style.display = 'none';
+    applyBtn.disabled = true;
+    return;
+  }
+
+  // Show roster preview: role → character mapping
+  const rows = Object.entries(theme.roles).map(([role, char]) => {
+    const label = ROLE_LABELS[role] || role;
+    const current = _getExistingAgent(role);
+    const currentChar = current ? (current.character || current.displayName || '—') : null;
+    const changed = currentChar && currentChar !== char;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px;">
+      <span style="color:var(--text-muted);min-width:120px;">${escHtml(label)}</span>
+      <span style="font-weight:500;">${escHtml(char)}</span>
+      ${currentChar ? `<span style="font-size:10px;color:${changed ? 'var(--yellow)' : 'var(--green)'};min-width:80px;text-align:right;">${changed ? '← ' + escHtml(currentChar) : '(same)'}</span>` : ''}
+    </div>`;
+  }).join('');
+
+  preview.innerHTML = rows;
+  preview.style.display = 'block';
+  applyBtn.disabled = false;
+}
+
+async function applyTheme() {
+  const select = document.getElementById('themeSwitcherSelect');
+  const errEl = document.getElementById('themeSwitcherError');
+  const applyBtn = document.getElementById('themeSwitcherApplyBtn');
+  const themeId = select.value;
+
+  if (!themeId) return;
+
+  applyBtn.disabled = true;
+  applyBtn.textContent = 'Applying...';
+
+  try {
+    const res = await fetch('/api/theme/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme: themeId }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeThemeSwitcher();
+      showGatewayBanner(data.message || `Applied ${data.label} theme`, { label: 'Restart Gateway', onclick: () => gatewayAction('restart') });
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      errEl.textContent = data.error || 'Failed to apply theme.';
+      errEl.style.display = 'block';
+      applyBtn.disabled = false;
+      applyBtn.textContent = 'Apply Theme';
+    }
+  } catch (e) {
+    errEl.textContent = `Error: ${e.message}`;
+    errEl.style.display = 'block';
+    applyBtn.disabled = false;
+    applyBtn.textContent = 'Apply Theme';
   }
 }
 
@@ -885,14 +1065,26 @@ async function loadProjects() {
   } catch (_) {}
 }
 
+/** Switch active-project.md and reload. No clone-check — project must already exist on disk. */
+async function _activateProject(name) {
+  try {
+    const res = await fetch('/api/projects/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (data.ok) setTimeout(() => location.reload(), 300);
+  } catch (_) {}
+}
+
 async function switchProject(name) {
   if (!name) return;
-  // Check if this is an uncloned repo — trigger clone first
+  // If this is an uncloned GH repo, clone it first then activate
   const proj = _projectsList.find(p => p.name === name);
   if (proj && !proj.cloned && proj.remote_url) {
     if (!confirm(`"${name}" hasn't been cloned yet. Clone it from GitHub now?`)) {
-      // Reset dropdown to current active
-      loadProjects();
+      loadProjects(); // reset dropdown
       return;
     }
     try {
@@ -909,24 +1101,15 @@ async function switchProject(name) {
         return;
       }
       showGatewayBanner(`Cloned ${name} successfully`);
+      // Mark as cloned in memory so _activateProject won't re-trigger this branch
+      proj.cloned = true;
     } catch (e) {
       alert('Clone error: ' + e.message);
       loadProjects();
       return;
     }
   }
-  try {
-    const res = await fetch('/api/projects/switch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      // Refresh the whole dashboard to reflect new project
-      setTimeout(() => location.reload(), 500);
-    }
-  } catch (_) {}
+  await _activateProject(name);
 }
 
 function showNewProjectModal() {
@@ -964,7 +1147,7 @@ async function createProject() {
     if (data.ok) {
       closeNewProjectModal();
       document.getElementById('newProjectName').value = '';
-      await switchProject(name);
+      await _activateProject(name); // project just created on disk — skip clone-check
     } else {
       alert(data.error || 'Failed to create project');
     }
@@ -1055,7 +1238,7 @@ async function cloneGithubRepo() {
     if (data.ok) {
       closeNewProjectModal();
       _ghSelectedRepo = null;
-      await switchProject(data.name);
+      await _activateProject(data.name); // project is already on disk — skip clone-check
     } else {
       alert(data.error || 'Clone failed');
     }
@@ -1074,6 +1257,18 @@ function hideNewProjectInput() { closeNewProjectModal(); }
 
 let _assetsCache = [];
 let _assetFilter = 'all';
+let _previewAssetPath = '';
+let _galleryCollapsed = false;
+
+function toggleAssetGallery() {
+  _galleryCollapsed = !_galleryCollapsed;
+  const body = document.getElementById('assetGalleryBody');
+  const arrow = document.getElementById('assetGalleryArrow');
+  const controls = document.getElementById('assetGalleryControls');
+  body.style.display = _galleryCollapsed ? 'none' : 'block';
+  controls.style.display = _galleryCollapsed ? 'none' : 'flex';
+  arrow.classList.toggle('open', !_galleryCollapsed);
+}
 
 async function loadAssetGallery() {
   const card = document.getElementById('assetGalleryCard');
@@ -1091,6 +1286,9 @@ async function loadAssetGallery() {
       return;
     }
     card.style.display = 'block';
+    const activeAssets = _assetsCache.filter(a => !a.rejected);
+    const countEl = document.getElementById('assetGalleryCount');
+    countEl.textContent = activeAssets.length > 0 ? `(${activeAssets.length})` : '';
 
     if (_assetsCache.length === 0) {
       grid.style.display = 'none';
@@ -1100,11 +1298,11 @@ async function loadAssetGallery() {
     grid.style.display = 'grid';
     empty.style.display = 'none';
 
-    // Build category filter options
-    const categories = [...new Set(_assetsCache.map(a => a.category))].sort();
-    filter.innerHTML = '<option value="all">All (' + _assetsCache.length + ')</option>' +
+    // Build category filter options (exclude "rejected" pseudo-category)
+    const categories = [...new Set(activeAssets.map(a => a.category))].sort();
+    filter.innerHTML = '<option value="all">All (' + activeAssets.length + ')</option>' +
       categories.map(c => {
-        const count = _assetsCache.filter(a => a.category === c).length;
+        const count = activeAssets.filter(a => a.category === c).length;
         return `<option value="${c}">${c} (${count})</option>`;
       }).join('');
     filter.value = _assetFilter;
@@ -1121,40 +1319,82 @@ function filterAssets(val) {
   renderAssetGrid();
 }
 
+function _assetCard(a, isRejected) {
+  const isSvg = a.ext === '.svg';
+  const thumbUrl = `/api/assets/file/${encodeURIComponent(a.path).replace(/%2F/g, '/')}`;
+  const sizeLabel = a.size_kb >= 1024 ? `${(a.size_kb/1024).toFixed(1)} MB` : `${a.size_kb} KB`;
+  const timeLabel = timeAgo(a.modified);
+  const dimStyle = isRejected ? 'opacity:0.5;' : '';
+  return `
+    <div class="asset-thumb" onclick="previewAsset('${escHtml(a.path)}', '${escHtml(a.name)}')"
+         style="cursor:pointer;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--bg);transition:border-color 0.15s;${dimStyle}"
+         onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+      <div style="width:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:#0d1117;overflow:hidden;">
+        <img src="${thumbUrl}" loading="lazy" style="width:100%;height:100%;object-fit:${isSvg ? 'contain' : 'cover'};${isSvg ? 'padding:8px;box-sizing:border-box;' : ''}" alt="${escHtml(a.name)}">
+      </div>
+      <div style="padding:6px 8px;">
+        <div style="font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escHtml(a.name)}">${escHtml(a.name)}</div>
+        <div style="font-size:10px;color:var(--text-muted);">${sizeLabel} · ${timeLabel}</div>
+      </div>
+    </div>`;
+}
+
+let _rejectedExpanded = false;
+
 function renderAssetGrid() {
   const grid = document.getElementById('assetGalleryGrid');
-  const filtered = _assetFilter === 'all'
-    ? _assetsCache
-    : _assetsCache.filter(a => a.category === _assetFilter);
+  const activeAssets = _assetsCache.filter(a => !a.rejected);
+  const rejectedAssets = _assetsCache.filter(a => a.rejected);
 
-  if (filtered.length === 0) {
+  const filtered = _assetFilter === 'all'
+    ? activeAssets
+    : activeAssets.filter(a => a.category === _assetFilter);
+
+  let html = '';
+
+  if (filtered.length === 0 && rejectedAssets.length === 0) {
     grid.innerHTML = '<div style="grid-column:1/-1;color:var(--text-muted);font-size:12px;text-align:center;padding:12px;">No assets in this category.</div>';
     return;
   }
 
-  grid.innerHTML = filtered.map(a => {
-    const isSvg = a.ext === '.svg';
-    const thumbUrl = `/api/assets/file/${encodeURIComponent(a.path)}`;
-    const sizeLabel = a.size_kb >= 1024 ? `${(a.size_kb/1024).toFixed(1)} MB` : `${a.size_kb} KB`;
-    const timeLabel = timeAgo(a.modified);
+  // Group active assets by category when viewing All
+  if (_assetFilter === 'all' && filtered.length > 0) {
+    const cats = [...new Set(filtered.map(a => a.category))].sort();
+    html += cats.map(cat => {
+      const items = filtered.filter(a => a.category === cat);
+      return `<div style="grid-column:1/-1;margin-top:8px;padding:4px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+          <span style="font-size:12px;font-weight:600;text-transform:capitalize;color:var(--text);">${escHtml(cat)}</span>
+          <span style="font-size:10px;color:var(--text-muted);">${items.length} file${items.length !== 1 ? 's' : ''}</span>
+        </div>` + items.map(a => _assetCard(a)).join('');
+    }).join('');
+  } else if (filtered.length > 0) {
+    html += filtered.map(a => _assetCard(a)).join('');
+  } else {
+    html += '<div style="grid-column:1/-1;color:var(--text-muted);font-size:12px;text-align:center;padding:12px;">No assets in this category.</div>';
+  }
 
-    return `
-      <div class="asset-thumb" onclick="previewAsset('${escHtml(a.path)}', '${escHtml(a.name)}')"
-           style="cursor:pointer;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--bg);transition:border-color 0.15s;"
-           onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
-        <div style="width:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:#18181b;overflow:hidden;">
-          ${isSvg
-            ? `<div style="padding:10px;color:var(--text-muted);font-size:11px;text-align:center;">SVG<br>${a.name}</div>`
-            : `<img src="${thumbUrl}" loading="lazy" style="width:100%;height:100%;object-fit:cover;" alt="${escHtml(a.name)}">`
-          }
-        </div>
-        <div style="padding:6px 8px;">
-          <div style="font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escHtml(a.name)}">${escHtml(a.name)}</div>
-          <div style="font-size:10px;color:var(--text-muted);">${sizeLabel} · ${timeLabel}</div>
-        </div>
+  // Rejected section — collapsed by default, shown at the bottom
+  if (rejectedAssets.length > 0) {
+    const rejLabel = _rejectedExpanded ? '▾' : '▸';
+    const rejItemsHtml = _rejectedExpanded
+      ? rejectedAssets.map(a => _assetCard(a, true)).join('')
+      : '';
+    html += `
+      <div style="grid-column:1/-1;margin-top:16px;padding:6px 0;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;cursor:pointer;opacity:0.6;"
+           onclick="toggleRejectedAssets()">
+        <span style="font-size:11px;">${rejLabel}</span>
+        <span style="font-size:11px;font-weight:600;color:var(--text-muted);">Rejected (${rejectedAssets.length})</span>
+        <span style="font-size:10px;color:var(--text-muted);">click to ${_rejectedExpanded ? 'hide' : 'show'}</span>
       </div>
-    `;
-  }).join('');
+      ${rejItemsHtml}`;
+  }
+
+  grid.innerHTML = html;
+}
+
+function toggleRejectedAssets() {
+  _rejectedExpanded = !_rejectedExpanded;
+  renderAssetGrid();
 }
 
 function previewAsset(path, name) {
@@ -1163,6 +1403,7 @@ function previewAsset(path, name) {
   const title = document.getElementById('assetPreviewTitle');
   const info = document.getElementById('assetPreviewInfo');
 
+  _previewAssetPath = path;
   const asset = _assetsCache.find(a => a.path === path);
   title.textContent = name;
   img.src = `/api/assets/file/${encodeURIComponent(path)}`;
@@ -1184,6 +1425,50 @@ function previewAsset(path, name) {
 function closeAssetPreview() {
   document.getElementById('assetPreviewOverlay').classList.remove('open');
   document.getElementById('assetPreviewImg').src = '';
+  _previewAssetPath = '';
+}
+
+async function rejectAsset() {
+  if (!_previewAssetPath) return;
+  const reason = prompt('Why are you rejecting this asset? (The graphics agent can read this feedback)');
+  if (reason === null) return; // cancelled
+  try {
+    const res = await fetch('/api/assets/reject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: _previewAssetPath, reason }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeAssetPreview();
+      loadAssetGallery();
+    } else {
+      alert('Reject failed: ' + (data.error || 'Unknown'));
+    }
+  } catch (e) {
+    alert('Reject failed: ' + e.message);
+  }
+}
+
+async function acceptAsset() {
+  if (!_previewAssetPath) return;
+  const reason = prompt('Optional: why do you like this asset? (The graphics agent can read this feedback)\n\nLeave blank and click OK to accept without a note.');
+  if (reason === null) return; // cancelled
+  try {
+    const res = await fetch('/api/assets/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: _previewAssetPath, reason: reason || '' }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeAssetPreview();
+    } else {
+      alert('Accept failed: ' + (data.error || 'Unknown'));
+    }
+  } catch (e) {
+    alert('Accept failed: ' + e.message);
+  }
 }
 
 async function commitAssets() {
@@ -1201,6 +1486,89 @@ async function commitAssets() {
     }
   } catch (e) {
     alert('Commit failed: ' + e.message);
+  }
+}
+
+async function pushProjectToGitHub() {
+  const msg = prompt('Commit message (leave blank for auto-generated):');
+  if (msg === null) return; // cancelled
+  try {
+    const res = await fetch('/api/projects/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const info = data.committed
+        ? `Committed ${data.committed} file(s).${data.pushed ? ' Pushed to GitHub.' : ' Push failed: ' + (data.push_error || 'unknown')}`
+        : data.message;
+      alert(info);
+    } else if (data.not_git_repo) {
+      // Project has no GitHub connection yet — offer to publish
+      showPublishModal(data.project_name || '');
+    } else {
+      alert('Push failed: ' + (data.error || 'Unknown'));
+    }
+  } catch (e) {
+    alert('Push failed: ' + e.message);
+  }
+}
+
+function showPublishModal(projectName) {
+  document.getElementById('publishRepoName').value = projectName;
+  document.getElementById('publishCommitMsg').value = '';
+  document.getElementById('publishError').style.display = 'none';
+  document.getElementById('publishBtn').disabled = false;
+  document.getElementById('publishBtn').textContent = 'Create & Push';
+  document.getElementById('publishOverlay').style.display = 'flex';
+  setTimeout(() => document.getElementById('publishRepoName').focus(), 100);
+}
+
+function closePublishModal(e) {
+  if (e && e.target !== e.currentTarget) return;
+  document.getElementById('publishOverlay').style.display = 'none';
+}
+
+async function submitPublish() {
+  const repoName = document.getElementById('publishRepoName').value.trim();
+  const commitMsg = document.getElementById('publishCommitMsg').value.trim();
+  const isPrivate = document.getElementById('publishPrivate').checked;
+  const errEl = document.getElementById('publishError');
+  const btn = document.getElementById('publishBtn');
+
+  if (!repoName) {
+    errEl.textContent = 'Repository name is required.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Publishing…';
+
+  try {
+    const res = await fetch('/api/projects/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo_name: repoName, private: isPrivate, commit_message: commitMsg }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closePublishModal();
+      showGatewayBanner(`Published! "${data.repo_name}" created on GitHub.`);
+      await _activateProject(document.getElementById('publishRepoName').value.trim() || data.repo_name);
+    } else {
+      errEl.textContent = data.error || 'Publish failed.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Create & Push';
+    }
+  } catch (e) {
+    errEl.textContent = 'Network error: ' + e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Create & Push';
   }
 }
 
@@ -2148,7 +2516,7 @@ async function setAsMain(role) {
 
     if (data.ok) {
       btn.textContent = '★';
-      showGatewayBanner('⚠ Gateway restart recommended — persona change may require it.');
+      showGatewayBanner('⚠ Gateway restart recommended — persona change may require it.', { label: 'Restart Now', onclick: () => gatewayAction('restart') });
       // Reload agent registry to show updated state
       setTimeout(() => {
         loadAgentRegistry();
@@ -2470,6 +2838,196 @@ fetch('/api/version')
   })
   .catch(() => {});
 
+// ── Team Chat ──────────────────────────────────────────────────────────────
+
+let _tcOpen = localStorage.getItem('teamChatOpen') === '1';
+let _tcMessages = [];
+let _tcCursor = null;
+let _tcBusy = false;
+let _tcAgents = {};  // {role: character_name}
+let _tcLoaded = false;
+
+// Agent colors for message labels
+const TC_COLORS = {
+  pm: '#58a6ff', architect: '#a78bfa', builder: '#34d399',
+  qa: '#fbbf24', security: '#f87171', devops: '#fb923c',
+  ux: '#c4b5fd', research: '#7dd3fc', graphics: '#fcd34d',
+};
+
+function toggleTeamChat() {
+  _tcOpen = !_tcOpen;
+  localStorage.setItem('teamChatOpen', _tcOpen ? '1' : '0');
+  document.getElementById('teamChatPanel').classList.toggle('open', _tcOpen);
+  document.body.classList.toggle('team-chat-open', _tcOpen);
+  if (_tcOpen && !_tcLoaded) loadTeamChat();
+}
+
+async function loadTeamChat() {
+  try {
+    const url = _tcCursor
+      ? `/api/team-chat/messages?cursor=${encodeURIComponent(_tcCursor)}`
+      : '/api/team-chat/messages?limit=100';
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.ok) return;
+
+    _tcCursor = data.cursor;
+    _tcAgents = data.agents || {};
+    _tcLoaded = true;
+
+    if (!_tcCursor || !_tcMessages.length) {
+      // Initial load — replace all
+      _tcMessages = data.messages || [];
+    } else {
+      // Incremental — append
+      appendTeamChatMessages(data.messages || []);
+      return;
+    }
+    _updateTcAgentSelect();
+    renderTeamChatTimeline();
+  } catch (e) { /* network error */ }
+}
+
+function appendTeamChatMessages(msgs) {
+  if (!msgs || !msgs.length) return;
+  // Deduplicate by id
+  const existing = new Set(_tcMessages.map(m => m.id));
+  const fresh = msgs.filter(m => !existing.has(m.id));
+  if (!fresh.length) return;
+  _tcMessages.push(...fresh);
+  renderTeamChatTimeline(true);
+}
+
+function _updateTcAgentSelect() {
+  const sel = document.getElementById('tcAgentSelect');
+  const roles = Object.keys(_tcAgents);
+  if (!roles.length) return;
+  sel.innerHTML = roles.map(r =>
+    `<option value="${r}">${_tcAgents[r] || r} (${r})</option>`
+  ).join('');
+}
+
+function renderTeamChatTimeline(scrollToBottom) {
+  const container = document.getElementById('tcMessages');
+  const empty = document.getElementById('tcEmpty');
+  const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
+
+  if (!_tcMessages.length) {
+    empty.style.display = '';
+    empty.textContent = _tcLoaded ? 'No messages yet. Start a conversation!' : 'Loading team chat...';
+    // Remove any existing message elements
+    container.querySelectorAll('.tc-msg,.tc-system-row').forEach(el => el.remove());
+    return;
+  }
+
+  empty.style.display = 'none';
+  container.querySelectorAll('.tc-msg,.tc-system-row').forEach(el => el.remove());
+
+  for (const msg of _tcMessages) {
+    if (msg.type === 'spawn') {
+      const row = document.createElement('div');
+      row.className = 'tc-system-row';
+      const agentName = _tcAgents[msg.agent] || msg.agent;
+      const targetName = msg.target ? (_tcAgents[msg.target] || msg.target) : '?';
+      row.textContent = `${agentName} → ${targetName}: ${msg.text}`;
+      container.appendChild(row);
+    } else if (msg.type === 'yield') {
+      const row = document.createElement('div');
+      row.className = 'tc-system-row';
+      const agentName = _tcAgents[msg.agent] || msg.agent;
+      row.textContent = `${agentName} waiting: ${msg.text}`;
+      container.appendChild(row);
+    } else if (msg.type === 'user') {
+      const div = document.createElement('div');
+      div.className = 'tc-msg tc-msg-user';
+      div.textContent = msg.text;
+      container.appendChild(div);
+    } else if (msg.type === 'assistant') {
+      const div = document.createElement('div');
+      div.className = 'tc-msg tc-msg-assistant';
+      const color = TC_COLORS[msg.agent] || '#888';
+      const name = _tcAgents[msg.agent] || msg.agent;
+      const ts = msg.ts ? new Date(msg.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
+      div.innerHTML = `<div class="tc-msg-label"><span class="tc-agent-dot" style="background:${color}"></span>${escHtml(name)}<span class="tc-msg-ts">${ts}</span></div>${escHtml(msg.text)}`;
+      container.appendChild(div);
+    }
+  }
+
+  if (scrollToBottom || wasAtBottom) {
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
+function tcInputKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendTeamChatMessage();
+  }
+}
+
+function tcInputResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+
+async function sendTeamChatMessage() {
+  if (_tcBusy) return;
+  const input = document.getElementById('tcInput');
+  const message = input.value.trim();
+  if (!message) return;
+
+  // Parse @mention to route to specific agent
+  let agentId = document.getElementById('tcAgentSelect').value || 'pm';
+  const mentionMatch = message.match(/^@(\w+)\s/);
+  if (mentionMatch) {
+    const mention = mentionMatch[1].toLowerCase();
+    // Check against role names and character names
+    for (const [role, char] of Object.entries(_tcAgents)) {
+      if (role === mention || (char && char.toLowerCase() === mention)) {
+        agentId = role;
+        break;
+      }
+    }
+  }
+
+  input.value = '';
+  input.style.height = '34px';
+  _tcBusy = true;
+  document.getElementById('tcSendBtn').disabled = true;
+
+  // Optimistic: add user message
+  const userMsg = { id: 'local_' + Date.now(), ts: new Date().toISOString(), agent: agentId, type: 'user', text: message, target: null, model: null };
+  _tcMessages.push(userMsg);
+  renderTeamChatTimeline(true);
+
+  try {
+    const res = await fetch('/api/team-chat/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId, message }),
+    });
+    const data = await res.json();
+    if (data.ok && data.response) {
+      const respMsg = { id: 'resp_' + Date.now(), ts: new Date().toISOString(), agent: agentId, type: 'assistant', text: data.response, target: null, model: data.model || null };
+      _tcMessages.push(respMsg);
+      renderTeamChatTimeline(true);
+    } else if (!data.ok) {
+      const errMsg = { id: 'err_' + Date.now(), ts: new Date().toISOString(), agent: agentId, type: 'assistant', text: `Error: ${data.error || 'Unknown error'}`, target: null, model: null };
+      _tcMessages.push(errMsg);
+      renderTeamChatTimeline(true);
+    }
+  } catch (e) {
+    const errMsg = { id: 'err_' + Date.now(), ts: new Date().toISOString(), agent: agentId, type: 'assistant', text: `Network error: ${e.message}`, target: null, model: null };
+    _tcMessages.push(errMsg);
+    renderTeamChatTimeline(true);
+  } finally {
+    _tcBusy = false;
+    document.getElementById('tcSendBtn').disabled = false;
+    document.getElementById('tcInput').focus();
+  }
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 
 // Initial state fetch (in case WebSocket is slow to connect)
@@ -2479,6 +3037,12 @@ fetch('/api/state')
   .catch(() => {});
 
 connect();
+// Restore team chat panel state from localStorage
+if (_tcOpen) {
+  document.getElementById('teamChatPanel').classList.add('open');
+  document.body.classList.add('team-chat-open');
+  loadTeamChat();
+}
 checkOpenclawSync();
 loadAgentRegistry();
 loadSessionLog();

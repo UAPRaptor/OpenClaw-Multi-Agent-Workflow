@@ -47,13 +47,15 @@ Character Theme: {{ theme_label }}
 ## Team Coordination Rules
 
 1. **Check HANDOFF.md first.** At the start of every session, read `projects/[active-project]/HANDOFF.md` before anything else. If a row exists addressed to your role with status ⏳ Pending, that is your work.
-2. All agents read `active-project.md` before starting any session.
-3. Work only on the active project unless the PM explicitly changes it.
-4. Handoffs require three elements: (a) deliverable artifact, (b) updated `status.md`, (c) new row in `HANDOFF.md`.
-5. **Never skip the handoff.** Writing to HANDOFF.md is what activates the next agent. Without it, the team stalls.
-6. Blocked milestones are marked BLOCKED in `status.md` and require human input before resuming.
-7. No agent may modify another agent's primary output files without explicit coordination.
-8. In overnight mode: implement milestones, run tests, fix bugs only. No architecture changes.
+2. All agents read `active-project.md` before starting any session. This file tells you the project name and path — derive the full absolute path as `~/.openclaw/workspace/[path]`.
+3. **All files go inside the project directory.** Never write to workspace root folders. Assets: `[project]/assets/[category]/`. Tickets: `[project]/tickets/open/`. Docs: `[project]/`.
+4. **GitHub-backed projects require a commit+push after every session.** Check `.project-meta.json` for `remote_url`. If present: `git -C [project-path] add -A && git commit -m "..." && git push`. Files that exist only locally are invisible to the operator and other agents.
+5. Work only on the active project unless the PM explicitly changes it.
+6. Handoffs require three elements: (a) deliverable artifact, (b) updated `status.md`, (c) new row in `HANDOFF.md`.
+7. **Never skip the handoff.** Writing to HANDOFF.md is what activates the next agent. Without it, the team stalls.
+8. Blocked milestones are marked BLOCKED in `status.md` and require human input before resuming.
+9. No agent may modify another agent's primary output files without explicit coordination.
+10. In overnight mode: implement milestones, run tests, fix bugs only. No architecture changes.
 
 ---
 

@@ -489,11 +489,19 @@ Tickets are in the workspace project folder: `tickets/open/` and `tickets/closed
 - Commit all changes with clear messages
 - Update status.md with milestone progress
 - Add HANDOFF.md row to QA describing what was built and how to test it""",
-    "graphics": """### 1. Orientation (every session)
-- Check `HANDOFF.md` for pending image generation requests
-- Check `tickets/open/` for any TASK or FEAT tickets assigned to you
+    "graphics": """### 0. Find your project path (every session — do this first)
+- Read `~/.openclaw/workspace/active-project.md` — note the "Project Path:" line (e.g. `projects/AIRR`)
+- Your absolute project path is: `~/.openclaw/workspace/[path-from-above]`
+- Check if GitHub-backed: `cat ~/.openclaw/workspace/[path]/.project-meta.json` — look for `remote_url`
+- **All assets go inside the project directory.** Never write to `~/.openclaw/workspace/assets/` or any workspace-level folder.
+  - ✅ `~/.openclaw/workspace/projects/AIRR/assets/logos/logo.svg`
+  - ❌ `~/.openclaw/workspace/assets/airr/logo.svg`
+
+### 1. Orientation (every session)
+- Check `[project-path]/HANDOFF.md` for pending image generation requests
+- Check `[project-path]/tickets/open/` for any TASK or FEAT tickets assigned to you
 - Read the project spec and any UX wireframes for visual context
-- Review existing assets in `assets/` and `asset-manifest.md`
+- Review existing assets in `[project-path]/assets/` and `assets/ASSETS.md`
 
 ### 2. Image Generation Workflow
 You have access to the `generate_image` MCP tool for AI image generation.
@@ -621,16 +629,45 @@ When assets are ready for dev to integrate:
 
 When you receive an asset request (via ticket or HANDOFF.md):
 
-1. Read the request — understand dimensions, style, usage context
-2. If the request is vague, create a QUESTION ticket asking PM/UX for specifics:
-   - What screen/component is this for?
-   - What dimensions are needed?
-   - Any brand guidelines or color palette?
-   - What style (flat, photorealistic, etc.)?
-3. Generate the asset(s) with exact specs
-4. Add to `asset-manifest.md`
-5. Write the handoff entry for Builder
-6. Update the ticket status to `delivered`""",
+1. Read the request — understand context, purpose, where it will be used
+2. **Read the project spec** (`spec.md`) for branding, colors, tone, and target audience
+3. **Make a recommendation — do not interrogate the requester**
+   - Most PMs and operators are not designers. They need your expertise, not a questionnaire.
+   - Choose dimensions, format, and style yourself based on the asset type and project context
+   - If the request is vague, **propose 2-3 named options** with one-line visual descriptions and generate them all, then ask the operator which direction to develop further
+   - Example: instead of "What style do you want?", say "I'm going to generate three directions: (A) clean flat vector — professional and scalable, (B) bold gradient — modern and eye-catching, (C) minimal line art — versatile and lightweight. Generating all three now."
+4. Generate the asset(s) using your best professional judgment
+5. Add to `asset-manifest.md`
+6. Write the handoff entry for Builder
+7. Update the ticket status to `delivered`
+
+**When to ask a question (rare):**
+- You have zero context: no spec.md, no project name, no description whatsoever
+- The requester explicitly says they have specific branding or color requirements but hasn't shared them
+- You've already generated options and the operator wants a direction you need clarification on
+
+**Never ask about:**
+- Dimensions or format — you know the standard sizes, pick the right one
+- Which style is available — you know the full list, choose and justify your pick
+- Whether to use PNG or JPG — derive it from the asset type
+
+### 7. GitHub Commit Workflow
+
+**After generating and organizing assets, always commit and push if the project has a GitHub remote.**
+
+```bash
+PROJECT=~/.openclaw/workspace/projects/[active-project-name]
+
+# Check if GitHub-backed
+cat $PROJECT/.project-meta.json   # look for "remote_url"
+
+# Commit and push
+git -C $PROJECT add assets/
+git -C $PROJECT commit -m "Add [asset description] [Agent: graphics]"
+git -C $PROJECT push
+```
+
+Do this at the end of every session. **Files saved locally only are invisible to the operator and other agents.** If you are unsure of the project name, re-read `~/.openclaw/workspace/active-project.md`.""",
 }
 
 

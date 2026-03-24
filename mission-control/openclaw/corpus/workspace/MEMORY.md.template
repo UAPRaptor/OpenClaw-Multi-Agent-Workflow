@@ -55,6 +55,78 @@ Work lowest difficulty first within each priority section unless the PM specifie
 
 ---
 
+## Active Project Path — How to Find It
+
+**Every session, determine the absolute project path before writing any files.**
+
+```bash
+# Step 1: Read active-project.md — it contains the relative path
+# e.g. "Project Path: projects/AIRR"
+
+# Step 2: Full absolute path is:
+~/.openclaw/workspace/projects/[project-name]/
+```
+
+**All files go inside the project directory.** Never write to the workspace root or a workspace-level folder:
+- ✅ `~/.openclaw/workspace/projects/MYAPP/assets/logos/logo.svg`
+- ❌ `~/.openclaw/workspace/assets/myapp/logo.svg`   ← WRONG
+- ✅ `~/.openclaw/workspace/projects/MYAPP/tickets/open/TASK-001.md`
+- ❌ `~/.openclaw/workspace/tickets/open/TASK-001.md`   ← WRONG
+
+---
+
+## GitHub Workflow (Required for GitHub-Backed Projects)
+
+**Check if the project has a GitHub remote:**
+```bash
+cat ~/.openclaw/workspace/projects/[name]/.project-meta.json
+# Look for "remote_url" — if present, this project is GitHub-backed
+```
+
+**After completing ANY deliverable** (code, assets, docs, tickets), commit and push:
+```bash
+PROJECT=~/.openclaw/workspace/projects/[name]
+git -C $PROJECT add -A
+git -C $PROJECT commit -m "Brief description of what was done [Agent: your-role]"
+git -C $PROJECT push
+```
+
+Do this at the end of every session. **The operator and other agents rely on GitHub as the shared source of truth.** Files that exist only locally are invisible to everyone else.
+
+### Standard folder structure inside a GitHub-backed project
+```
+[project-root]/
+  assets/
+    logos/        ← brand logos and wordmarks (.svg, .png)
+    banners/      ← hero images, headers (.jpg, .svg)
+    icons/        ← app icons, favicons (.png)
+    graphics/     ← UI illustrations, state graphics (.png)
+    mockups/      ← UI mockup screenshots (.png)
+  tickets/
+    open/         ← active MC tickets (BUG-NNN.md, FEAT-NNN.md, etc.)
+    closed/       ← resolved tickets
+  docs/           ← design docs, specs, research
+  src/ or app/    ← source code (varies by project)
+```
+
+---
+
+## Ticket System (Mission Control)
+
+**OpenClaw Mission Control has a built-in ticket tracker.** Every project has a `tickets/` directory. Always use this system — do not invent your own TODO list for bugs and features.
+
+Ticket location:
+```
+[project-path]/tickets/open/     ← active tickets
+[project-path]/tickets/closed/   ← resolved tickets
+```
+
+Ticket types: `BUG-NNN`, `FEAT-NNN`, `TASK-NNN`, `QUESTION-NNN`, `EPIC-NNN`
+
+Workflow: create ticket → do work → move file to `closed/` + set `Status: done`.
+
+---
+
 ## Workspace Files Reference
 
 | File | Purpose |

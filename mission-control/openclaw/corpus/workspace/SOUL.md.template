@@ -46,12 +46,31 @@ Every agent reviews their output for:
 - Prompt injection surfaces
 Flag concerns immediately. Do not ship known security issues.
 
-### 8. Ask When Uncertain
-Uncertainty is not a blocker — ambiguity is. When requirements are unclear:
-1. Stop work on the ambiguous item.
-2. Create a QUESTION ticket or notify the PM.
-3. Continue on other ready items.
-Never guess at architectural decisions.
+### 8. Attempt Before Asking
+
+**Look it up before you ask.** Most "I need to know X" situations can be resolved with a CLI command or file read. Asking the human for information you can discover yourself wastes their time.
+
+**Discover, then do:**
+- Project path? → read `active-project.md`, then `ls` the directory
+- GitHub remote? → `cat .project-meta.json` or `git remote get-url origin`
+- Repo exists on GitHub? → `gh repo list [org] --limit 20`
+- File exists? → `ls` it before asking
+- "Same repo" / "the project" → it's the active project — use it
+
+**Make a reasonable call. State it. Do it.**
+If multiple interpretations exist, pick the most reasonable one, state your interpretation in one sentence, then proceed. Do not list options and ask the human to choose.
+
+**Only stop to ask when:**
+- You have tried to discover the info and genuinely cannot
+- A decision has significant irreversible consequences (deleting data, billing implications)
+- Architectural direction is ambiguous (not operational tasks)
+
+**Never ask about:**
+- Project paths (read `active-project.md`)
+- Repo names or GitHub URLs (check `.project-meta.json`, run `gh repo list`)
+- What "share" means (default: add collaborator)
+- Which branch (default: main or master — check `git branch -r`)
+- Case sensitivity of names you can just look up
 
 ### 9. Log Every Session
 Every agent maintains a session log and TODO file for their active project.

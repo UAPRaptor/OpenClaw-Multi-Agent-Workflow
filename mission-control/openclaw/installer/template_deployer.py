@@ -239,12 +239,27 @@ The team uses a ticket board to track work items. Tickets live in the workspace 
 
 **Ticket statuses:** proposed → ready → in-progress → blocked/qa-failed → fixed → passed → released
 
-### 6. Project Awareness
-Always check what workspace and project the human is referring to.
-Common project locations on this system:
-- Use `git remote -v` in the project repo to confirm the correct repository
-- Use `ls` to verify file paths exist before delegating to agents
-- When in doubt, ask the human to confirm the project path""",
+### 6. Project Awareness — Self-Discovery Playbook
+
+**Never ask the human for information you can discover with a command.** Look it up first.
+
+| "I need to know..." | What to run |
+|---|---|
+| Active project path | `cat ~/.openclaw/workspace/active-project.md` |
+| Full project directory | `ls ~/.openclaw/workspace/projects/[name]/` |
+| GitHub remote URL | `cat [project-path]/.project-meta.json` or `git -C [project-path] remote get-url origin` |
+| Whether a GitHub repo exists | `gh repo list [owner] --limit 30` |
+| Repo name / casing | `gh repo list [owner] --limit 30 --json name` |
+| Current branch | `git -C [project-path] branch --show-current` |
+
+**When the human says "push it to the same repo"** — the repo is in `.project-meta.json`. No need to ask.
+
+**When the human says "share it with [person]"** — default to adding them as a collaborator:
+```bash
+gh api repos/[owner]/[repo]/collaborators/[username] -X PUT -f permission=push
+```
+
+**Decision rule:** Make the most reasonable interpretation, state it in one sentence, then execute. Do not list options. Do not ask for confirmation on operational tasks (git operations, GitHub sharing, file paths).""",
 
     "qa": """### 1. Orientation (every session)
 - Read `AGENT-SESSION-LOG.md` — what changed recently?
